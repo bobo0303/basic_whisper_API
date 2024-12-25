@@ -2,6 +2,6 @@
 
 ## Now support language
 
-"""
+```
 ["ZH", "EN", "JA", "KO", "DE", "SE"]
-"""
+```
