@@ -296,7 +296,9 @@ async def translate(
         trans_lang=t_lang,  
         trans_text="",  
         times=times,  
-        audio_uid=transcription_request.audio_uid,  
+        audio_uid=transcription_request.audio_uid, 
+        transcribe_time=0.0,
+        translate_time=0.0, 
     )  
 
     if model.model_version is None:
@@ -310,6 +312,8 @@ async def translate(
         o_result, t_result, inference_time, g_translate_time, translate_method = model.translate(audio_buffer, o_lang, t_lang)  
         response_data.ori_text = o_result  
         response_data.trans_text = t_result  
+        response_data.transcribe_time = inference_time
+        response_data.translate_time = g_translate_time
         logger.debug(response_data.model_dump_json())  
         logger.info(f" | device_id: {response_data.device_id} | audio_uid: {response_data.audio_uid} | language: {o_lang} -> {t_lang} | translate_method: {translate_method} | ")  
         logger.info(f" | transcription: {o_result} |")  
@@ -317,7 +321,7 @@ async def translate(
         logger.info(f"inference has been completed in {inference_time:.2f} seconds. | translate has been completed in {g_translate_time:.2f} seconds.")  
         os.remove(audio_buffer)  
           
-        return BaseResponse(message=f" | transcription: {o_result} | translation: {t_result} |", data=response_data)  
+        return BaseResponse(status="OK",message=f" | transcription: {o_result} | translation: {t_result} | ", data=response_data)  
   
 # Clean up audio files  
 def delete_old_audio_files():  

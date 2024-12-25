@@ -4,10 +4,11 @@ import time
 import torch
 import whisper  
 import logging  
+import threading  
 
 from googletrans import Translator  
 import argostranslate.translate  
-from .gpt_translate import Gpt4oTranslate  
+from api.gpt_translate import Gpt4oTranslate  
 
 from lib.constant import ModlePath, OPTIONS
   
@@ -137,3 +138,72 @@ if __name__ == "__main__":
     print(f"Translated Transcription: {translated_pred}")  
     print(f"Inference Time: {inference_time} seconds")  
     print(f"Translation Time: {g_translate_time} seconds")  
+
+
+# if __name__ == "__main__":  
+#     import threading  
+#     import ctypes  
+#     import time  
+    
+#     def translate_and_print(model, audio_file_path, ori, tar):  
+#         print("thread 2 start")
+#         ori_pred, translated_pred, inference_time, g_translate_time, translate_method = model.translate(audio_file_path, ori, tar)  
+#         print(f"2Original Transcription: {ori_pred}")  
+#         print(f"2Translated Transcription: {translated_pred}")  
+#         print(f"2Inference Time: {inference_time} seconds")  
+#         print(f"2Translation Time: {g_translate_time} seconds") 
+#         print("thread 2 end")
+
+#         return ori_pred, translated_pred, inference_time, g_translate_time, translate_method  
+        
+
+#     def get_thread_id(thread):  
+#         if not thread.is_alive():  
+#             raise threading.ThreadError("The thread is not active")  
+#         for tid, tobj in threading._active.items():  
+#             if tobj is thread:  
+#                 return tid  
+#         raise AssertionError("Could not determine the thread ID")  
+    
+#     def stop_thread(thread):  
+#         thread_id = get_thread_id(thread)  
+#         res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread_id), ctypes.py_object(SystemExit))  
+#         if res == 0:  
+#             raise ValueError("Invalid thread ID")  
+#         elif res != 1:  
+#             ctypes.pythonapi.PyThreadState_SetAsyncExc(thread_id, 0)  
+#             raise SystemError("PyThreadState_SetAsyncExc failed")  
+        
+#     model = Model()  
+#     model.load_model("medium")  # Load the specified model by name  
+  
+#     audio_file_path_1 = "/mnt/audio/123.wav"  # Replace with the actual audio file path  
+#     audio_file_path_2 = "/mnt/audio/test.wav"  # Replace with the actual audio file path  
+#     ori = "en"  # Original language  
+#     tar = "ko"  # Target language  
+  
+#     def times():  
+#         print("Thread 1 is running")  
+#         time.sleep(0.5)  # Simulate some work in thread 1  
+#         print("Thread 1 is done")  
+  
+#     # Create two threads  
+#     thread1 = threading.Thread(target=times)  
+#     thread2 = threading.Thread(target=translate_and_print, args=(model, audio_file_path_2, ori, tar))  
+  
+#     # Start the threads  
+#     thread1.start()  
+#     thread2.start()  
+  
+#     # Wait for thread 1 to complete  
+#     thread1.join()  
+      
+#     # Forcefully stop thread 2  
+#     stop_thread(thread2) 
+
+#     ori_pred, translated_pred, inference_time, g_translate_time, _ = model.translate(audio_file_path_1, ori, tar)  
+#     print(f"Original Transcription: {ori_pred}")  
+#     print(f"Translated Transcription: {translated_pred}")  
+#     print(f"Inference Time: {inference_time} seconds")  
+#     print(f"Translation Time: {g_translate_time} seconds") 
+

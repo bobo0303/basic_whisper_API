@@ -6,7 +6,7 @@ from datetime import datetime
 
 class ModlePath(BaseModel):
     large_v2: str = "models/large-v2.pt"
-    medium: str = "models/medium.pt"
+    medium: str = "/mnt/models/medium.pt"
     # turbo: str = "models/large-v3-turbo.pt"
 
 #############################################################################
@@ -40,6 +40,8 @@ class ResponseSTT(BaseModel):
     trans_text: str
     times: datetime
     audio_uid: str
+    transcribe_time: float
+    translate_time: float
 
 #############################################################################
 
