@@ -136,7 +136,7 @@ class Model:
         end = time.time()  
         g_translate_time = end - start  
   
-        return ori_pred, translated_pred, inference_time, g_translate_time, self.translate_method  
+        return ori_pred, translated_pred, inference_time, g_translate_time, self.translate_method
   
 if __name__ == "__main__":  
     # argos  
