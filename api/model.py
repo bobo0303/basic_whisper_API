@@ -109,18 +109,30 @@ class Model:
         logger.debug(f"Inference time {inference_time} seconds.")  
   
         start = time.time()  
-        if ori != tar and ori_pred != '' and self.translate_method == "google":  
-            ori = 'zh-TW' if ori == 'zh' else ori  
-            tar = 'zh-TW' if tar == 'zh' else tar  
-            translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
-        elif ori != tar and ori_pred != '' and self.translate_method == "argos":  
-            ori = 'zt' if ori == 'zh' else ori  
-            tar = 'zt' if tar == 'zh' else tar  
-            translated_pred = argostranslate.translate.translate(ori_pred, ori, tar)  
-        elif ori != tar and ori_pred != '' and self.translate_method == "gpt-4o":  
-            translated_pred = self.gpt4o_translator.translate(ori_pred, ori, tar)  
-        else:  
-            translated_pred = ori_pred  
+        try:
+            if ori != tar and ori_pred != '' and self.translate_method == "google":  
+                ori = 'zh-TW' if ori == 'zh' else ori  
+                tar = 'zh-TW' if tar == 'zh' else tar  
+                translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
+            elif ori != tar and ori_pred != '' and self.translate_method == "argos":  
+                ori = 'zt' if ori == 'zh' else ori  
+                tar = 'zt' if tar == 'zh' else tar  
+                translated_pred = argostranslate.translate.translate(ori_pred, ori, tar)  
+            elif ori != tar and ori_pred != '' and self.translate_method == "gpt-4o":  
+                try:
+                    translated_pred = self.gpt4o_translator.translate(ori_pred, ori, tar)  
+                except Exception as e:
+                    logger.error(f'translate() gpt-4o error:{e}')
+                    # change to google translate
+                    ori = 'zh-TW' if ori == 'zh' else ori  
+                    tar = 'zh-TW' if tar == 'zh' else tar  
+                    translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
+            else:  
+                translated_pred = ori_pred  
+        except Exception as e:
+            logger.error(f'translate() error:{e}')
+            translated_pred = ' '
+
         end = time.time()  
         g_translate_time = end - start  
   
