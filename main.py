@@ -113,7 +113,7 @@ async def load_default_model_preheat():
     logger.info("#####################################################")  
     logger.info(f"Start to loading default model.")  
     # load model  
-    default_model = "medium"  
+    default_model = "large_v2"  
     model.load_model(default_model)  # Directly load the default model  
     logger.info(f"Default model {default_model} has been loaded successfully.")  
     # preheat  
@@ -280,13 +280,6 @@ async def translate(
     times = str(transcription_request.times)
     o_lang = transcription_request.o_lang.lower()
     t_lang = transcription_request.t_lang.lower()
-    
-    file_name = times + ".wav"  
-    audio_buffer = f"audio/{file_name}"  
-    with open(audio_buffer, 'wb') as f:  
-        f.write(file.file.read())  
-    if not os.path.exists(audio_buffer):  
-        raise FileNotFoundError("The audio file does not exist, please check the audio path.")  
 
     response_data = ResponseSTT(  
         meeting_id=transcription_request.meeting_id,  
@@ -300,13 +293,20 @@ async def translate(
         transcribe_time=0.0,
         translate_time=0.0, 
     )  
+    
+    file_name = times + ".wav"  
+    audio_buffer = f"audio/{file_name}"  
+    with open(audio_buffer, 'wb') as f:  
+        f.write(file.file.read())  
+    if not os.path.exists(audio_buffer):  
+        return BaseResponse(status="FAILED", message="The audio file does not exist, please check the audio path.", data=response_data)  
 
     if model.model_version is None:
-        return BaseResponse(message="model haven't been load successfull. may out of memory please check again", data=response_data)  
+        return BaseResponse(status="FAILED", message="model haven't been load successfull. may out of memory please check again", data=response_data)  
       
     if o_lang not in LANGUAGE_LIST or t_lang not in LANGUAGE_LIST:  
         logger.info(f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.")  
-        return BaseResponse(message=f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.", data=None)  
+        return BaseResponse(status="FAILED", message=f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.", data=None)  
       
     if os.path.exists(audio_buffer):  
         o_result, t_result, inference_time, g_translate_time, translate_method = model.translate(audio_buffer, o_lang, t_lang)  
@@ -321,7 +321,7 @@ async def translate(
         logger.info(f"inference has been completed in {inference_time:.2f} seconds. | translate has been completed in {g_translate_time:.2f} seconds.")  
         os.remove(audio_buffer)  
           
-        return BaseResponse(status="OK",message=f" | transcription: {o_result} | translation: {t_result} | ", data=response_data)  
+        return BaseResponse(status="OK", message=f" | transcription: {o_result} | translation: {t_result} | ", data=response_data)  
   
 # Clean up audio files  
 def delete_old_audio_files():  

@@ -26,7 +26,7 @@ class Model:
         self.models_path = ModlePath()  
         self.google_translator = Translator()  
         self.gpt4o_translator = Gpt4oTranslate()  
-        self.translate_method = "argos"  
+        self.translate_method = "gpt-4o"  
   
     def load_model(self, models_name):  
         """  
@@ -136,7 +136,7 @@ class Model:
         end = time.time()  
         g_translate_time = end - start  
   
-        return ori_pred, translated_pred, inference_time, g_translate_time, self.translate_method  
+        return ori_pred, translated_pred, inference_time, g_translate_time, self.translate_method
   
 if __name__ == "__main__":  
     # argos  
