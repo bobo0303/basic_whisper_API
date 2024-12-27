@@ -11,7 +11,7 @@ import yaml
 import logging  
 from openai import AzureOpenAI
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from lib.constant import AZURE_CONFIG, LANGUAGE_LIST, SOURCE_LANGUAGE, SYSTEM_PRMOPT
+from lib.constant import AZURE_CONFIG, LANGUAGE_LIST, SOURCE_LANGUAGE, SYSTEM_PRMOPT, SAMPLE_1, SAMPLE_2, SAMPLE_3
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +28,14 @@ class Gpt4oTranslate:
         
     def translate(self, sourse_text, sourse_lang, target_lang):
         if {sourse_lang, target_lang}.issubset(LANGUAGE_LIST):  
-            sourse_lang_inex = LANGUAGE_LIST.index(sourse_lang)
-            target_lang_inex = LANGUAGE_LIST.index(target_lang)
-
-            source_language = SOURCE_LANGUAGE[sourse_lang_inex][target_lang_inex]
             system_prompt = SYSTEM_PRMOPT[target_lang]
-            system_prompt = system_prompt.replace("source_language", source_language)  
+            try:
+                system_prompt = system_prompt.replace("source_language", SOURCE_LANGUAGE[LANGUAGE_LIST.index(sourse_lang)][LANGUAGE_LIST.index(target_lang)])  
+                system_prompt = system_prompt.replace("sample_1", SAMPLE_1[sourse_lang])  
+                system_prompt = system_prompt.replace("sample_2", SAMPLE_2[sourse_lang])  
+                system_prompt = system_prompt.replace("sample_3", SAMPLE_3[sourse_lang])  
+            except Exception as e:
+                logger.error(f"Error: {e}")
             logger.debug(f"system prompt: {system_prompt}")
         
         # 調用 OpenAI 模型  
