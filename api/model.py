@@ -26,7 +26,7 @@ class Model:
         self.models_path = ModlePath()  
         self.google_translator = Translator()  
         self.gpt4o_translator = Gpt4oTranslate()  
-        self.translate_method = "argos"  
+        self.translate_method = "gpt-4o"  
   
     def load_model(self, models_name):  
         """  

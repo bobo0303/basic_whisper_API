@@ -5,7 +5,7 @@ from datetime import datetime
 #############################################################################
 
 class ModlePath(BaseModel):
-    large_v2: str = "models/large-v2.pt"
+    large_v2: str = "/mnt/models/large-v2.pt"
     medium: str = "/mnt/models/medium.pt"
     # turbo: str = "models/large-v3-turbo.pt"
 
