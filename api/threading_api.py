@@ -34,4 +34,3 @@ def stop_thread(thread):
 
 def waiting_times(stop_event):  
     stop_event.wait(WAITING_TIME)  # Wait for the event or timeout  
-    logger.info(" | Time out | ")

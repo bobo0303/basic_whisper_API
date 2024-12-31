@@ -11,7 +11,7 @@ import yaml
 import logging  
 from openai import AzureOpenAI
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from lib.constant import AZURE_CONFIG, LANGUAGE_LIST, SOURCE_LANGUAGE, SYSTEM_PRMOPT, SAMPLE_1, SAMPLE_2, SAMPLE_3
+from lib.constant import AZURE_CONFIG, LANGUAGE_LIST, SOURCE_LANGUAGE, SYSTEM_PRMOPT, USER_PRMOPT_TITLE, SAMPLE_1, SAMPLE_2, SAMPLE_3
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class Gpt4oTranslate:
                 { "role": "user", "content": [  
                     { 
                         "type": "text", 
-                        "text": sourse_text
+                        "text": USER_PRMOPT_TITLE[target_lang]+sourse_text
                     }
                 ] } 
             ],

@@ -91,7 +91,7 @@ def run_inference():
               
             time.sleep(0.5)  
     except Exception as e:  
-        print(e)  
+        logger.error(e)
   
 # Turn-on the worker thread.  
 thread = threading.Thread(target=run_inference, daemon=True).start()  
@@ -114,7 +114,7 @@ async def load_default_model_preheat():
     logger.info("#####################################################")  
     logger.info(f"Start to loading default model.")  
     # load model  
-    default_model = "large_v2"  
+    default_model = "medium"  
     model.load_model(default_model)  # Directly load the default model  
     logger.info(f"Default model {default_model} has been loaded successfully.")  
     # preheat  
@@ -308,8 +308,8 @@ async def translate(
     if o_lang not in LANGUAGE_LIST or t_lang not in LANGUAGE_LIST:  
         logger.info(f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.")  
         return BaseResponse(status="FAILED", message=f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.", data=None)  
-      
-    if os.path.exists(audio_buffer):
+    
+    try:
         # Create a queue to hold the return value
         result_queue = Queue()
         # Create an event to signal stopping  
@@ -340,14 +340,18 @@ async def translate(
             logger.info(f" | device_id: {response_data.device_id} | audio_uid: {response_data.audio_uid} | language: {o_lang} -> {t_lang} | translate_method: {translate_method} |")  
             logger.info(f" | transcription: {response_data.ori_text} |")  
             logger.info(f" | translation: {response_data.trans_text} |")  
-            logger.info(f"inference has been completed in {inference_time:.2f} seconds. | translate has been completed in {g_translate_time:.2f} seconds.")  
+            logger.info(f" | inference has been completed in {inference_time:.2f} seconds. | translate has been completed in {g_translate_time:.2f} seconds.")  
             state="OK"
         else:
             logger.info(f" | Inference has exceeded the upper limit time and has been stopped |")  
             state="FAILD"
 
         return BaseResponse(status=state, message=f" | transcription: {response_data.ori_text} | translation: {response_data.trans_text} | ", data=response_data)  
-  
+    except Exception as e:
+        logger.error(f'iference() error:{e}')
+        return BaseResponse(status="FAILD", message=f" | iference() error:{e} | ", data=response_data)  
+
+
 # Clean up audio files  
 def delete_old_audio_files():  
     """  
