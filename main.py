@@ -10,6 +10,7 @@ import threading
 from queue import Queue  
 from threading import Thread, Event  
 from api.model import Model  
+from api.threading_api import translate_and_print, waiting_times, stop_thread
 from lib.data_object import LoadModelRequest, LoadMethodRequest  
 from lib.base_object import BaseResponse  
 from lib.constant import ResponseSTT, TranscriptionData, LANGUAGE_LIST, TRANSLATE_METHODS  
@@ -44,7 +45,7 @@ queue = Queue()
 @app.get("/")  
 def HelloWorld():  
     return {"Hello": "World"}  
-  
+
 def run_inference():  
     try:  
         while True:  
@@ -90,11 +91,11 @@ def run_inference():
               
             time.sleep(0.5)  
     except Exception as e:  
-        print(e)  
+        logger.error(e)
   
 # Turn-on the worker thread.  
 thread = threading.Thread(target=run_inference, daemon=True).start()  
-  
+
 ##############################################################################  
   
 @app.on_event("startup")  
@@ -113,7 +114,7 @@ async def load_default_model_preheat():
     logger.info("#####################################################")  
     logger.info(f"Start to loading default model.")  
     # load model  
-    default_model = "large_v2"  
+    default_model = "medium"  
     model.load_model(default_model)  # Directly load the default model  
     logger.info(f"Default model {default_model} has been loaded successfully.")  
     # preheat  
@@ -307,22 +308,50 @@ async def translate(
     if o_lang not in LANGUAGE_LIST or t_lang not in LANGUAGE_LIST:  
         logger.info(f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.")  
         return BaseResponse(status="FAILED", message=f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.", data=None)  
-      
-    if os.path.exists(audio_buffer):  
-        o_result, t_result, inference_time, g_translate_time, translate_method = model.translate(audio_buffer, o_lang, t_lang)  
-        response_data.ori_text = o_result  
-        response_data.trans_text = t_result  
-        response_data.transcribe_time = inference_time
-        response_data.translate_time = g_translate_time
-        logger.debug(response_data.model_dump_json())  
-        logger.info(f" | device_id: {response_data.device_id} | audio_uid: {response_data.audio_uid} | language: {o_lang} -> {t_lang} | translate_method: {translate_method} | ")  
-        logger.info(f" | transcription: {o_result} |")  
-        logger.info(f" | translation: {t_result} |")  
-        logger.info(f"inference has been completed in {inference_time:.2f} seconds. | translate has been completed in {g_translate_time:.2f} seconds.")  
+    
+    try:
+        # Create a queue to hold the return value
+        result_queue = Queue()
+        # Create an event to signal stopping  
+        stop_event = threading.Event()  
+
+        # Create timing thread and inference thread
+        time_thread = threading.Thread(target=waiting_times, args=(stop_event,))  
+        inference_thread = threading.Thread(target=translate_and_print, args=(model, audio_buffer, o_lang, t_lang, result_queue, stop_event))
+
+        # Start the threads
+        time_thread.start()
+        inference_thread.start()
+
+        # Wait for timing thread to complete check if the inference thread is active to close
+        time_thread.join()
+        stop_thread(inference_thread) 
+
         os.remove(audio_buffer)  
-          
-        return BaseResponse(status="OK", message=f" | transcription: {o_result} | translation: {t_result} | ", data=response_data)  
-  
+
+        # Get the result from the queue  
+        if not result_queue.empty():  
+            o_result, t_result, inference_time, g_translate_time, translate_method = result_queue.get() 
+            response_data.ori_text = o_result
+            response_data.trans_text = t_result
+            response_data.transcribe_time = inference_time
+            response_data.translate_time = g_translate_time
+            logger.debug(response_data.model_dump_json())  
+            logger.info(f" | device_id: {response_data.device_id} | audio_uid: {response_data.audio_uid} | language: {o_lang} -> {t_lang} | translate_method: {translate_method} |")  
+            logger.info(f" | transcription: {response_data.ori_text} |")  
+            logger.info(f" | translation: {response_data.trans_text} |")  
+            logger.info(f" | inference has been completed in {inference_time:.2f} seconds. | translate has been completed in {g_translate_time:.2f} seconds.")  
+            state="OK"
+        else:
+            logger.info(f" | Inference has exceeded the upper limit time and has been stopped |")  
+            state="FAILD"
+
+        return BaseResponse(status=state, message=f" | transcription: {response_data.ori_text} | translation: {response_data.trans_text} | ", data=response_data)  
+    except Exception as e:
+        logger.error(f'iference() error:{e}')
+        return BaseResponse(status="FAILD", message=f" | iference() error:{e} | ", data=response_data)  
+
+
 # Clean up audio files  
 def delete_old_audio_files():  
     """  
