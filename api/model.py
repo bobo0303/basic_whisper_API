@@ -4,7 +4,6 @@ import time
 import torch
 import whisper  
 import logging  
-import threading  
 
 from googletrans import Translator  
 import argostranslate.translate  

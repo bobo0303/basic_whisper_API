@@ -19,6 +19,9 @@ OPTIONS = {
     "no_speech_threshold": 0.2,
 }
 
+# The whisper inference max waiting time (if over the time will stop it)
+WAITING_TIME = 3
+
 #############################################################################
 
 class TranscriptionData(BaseModel):
