@@ -13,7 +13,7 @@ from api.model import Model
 from api.threading_api import translate_and_print, waiting_times, stop_thread
 from lib.data_object import LoadModelRequest, LoadMethodRequest  
 from lib.base_object import BaseResponse  
-from lib.constant import ResponseSTT, TranscriptionData, LANGUAGE_LIST, TRANSLATE_METHODS  
+from lib.constant import ResponseSTT, TranscriptionData, TextData, LANGUAGE_LIST, TRANSLATE_METHODS  
   
 #############################################################################  
   
@@ -43,8 +43,8 @@ model = Model()
 queue = Queue()  
   
 @app.get("/")  
-def HelloWorld():  
-    return {"Hello": "World"}  
+def HelloWorld(name:str=None):  
+    return {"Hello": f"World {name}"}  
 
 def run_inference():  
     try:  
@@ -71,7 +71,8 @@ def run_inference():
                 continue  
               
             if os.path.exists(audio_buffer):  
-                o_result, t_result, inference_time, g_translate_time, translate_method = model.translate(audio_buffer, ori_lang, tar_lang)  
+                o_result, inference_time = model.transcribe(audio_buffer, ori_lang)  
+                t_result, g_translate_time, translate_method = model.translate(o_result, ori_lang, tar_lang)  
                 response_data.ori_text = o_result  
                 response_data.trans_text = t_result  
                   
@@ -114,7 +115,7 @@ async def load_default_model_preheat():
     logger.info("#####################################################")  
     logger.info(f"Start to loading default model.")  
     # load model  
-    default_model = "medium"  
+    default_model = "large_v2"  
     model.load_model(default_model)  # Directly load the default model  
     logger.info(f"Default model {default_model} has been loaded successfully.")  
     # preheat  
@@ -122,7 +123,7 @@ async def load_default_model_preheat():
     default_audio = "audio/test.wav"  
     start = time.time()  
     for _ in range(5):  
-        model.translate(default_audio, "en", "en")  
+        model.transcribe(default_audio, "en")  
     end = time.time()  
       
     logger.info(f"Preheat model has been completed in {end - start:.2f} seconds.")  
@@ -344,12 +345,32 @@ async def translate(
             state="OK"
         else:
             logger.info(f" | Inference has exceeded the upper limit time and has been stopped |")  
-            state="FAILD"
+            state="FAILED"
 
         return BaseResponse(status=state, message=f" | transcription: {response_data.ori_text} | translation: {response_data.trans_text} | ", data=response_data)  
     except Exception as e:
         logger.error(f'iference() error:{e}')
-        return BaseResponse(status="FAILD", message=f" | iference() error:{e} | ", data=response_data)  
+        return BaseResponse(status="FAILED", message=f" | iference() error:{e} | ", data=response_data)  
+
+@app.post("/text_translate")  
+async def text_translate(  
+    translate_request: TextData = Depends()
+):  
+    o_lang = translate_request.o_lang.lower()
+    t_lang = translate_request.t_lang.lower()
+    o_result = translate_request.ori_text
+    try:
+        translated_pred, g_translate_time, translate_method = model.translate(o_result, o_lang, t_lang)
+        logger.info(f" | language: {o_lang} -> {t_lang} | translate_method: {translate_method} | translate has been completed in {g_translate_time:.2f} seconds. |")  
+        logger.info(f" | transcription: {o_result} |")  
+        logger.info(f" | translation: {translated_pred} |") 
+        state="OK"
+        return BaseResponse(status=state, message=f" | input text: {o_result} | translation: {translated_pred} | ", data=g_translate_time)  
+    except Exception as e:
+        logger.error(f'iference() error:{e}')
+        translated_pred = o_result
+        state="FAILED"
+        return BaseResponse(status=state, message=f" | iference() error:{e} | ", data=g_translate_time)  
 
 
 # Clean up audio files  

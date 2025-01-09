@@ -25,7 +25,7 @@ class Model:
         self.models_path = ModlePath()  
         self.google_translator = Translator()  
         self.gpt4o_translator = Gpt4oTranslate()  
-        self.translate_method = "gpt-4o"  
+        self.translate_method = "google"  
   
     def load_model(self, models_name):  
         """  
@@ -83,7 +83,7 @@ class Model:
         """  
         self.translate_method = method_name  
   
-    def translate(self, audio_file_path, ori, tar):  
+    def transcribe(self, audio_file_path, ori):  
         """  
         Perform transcription and translation on the given audio file.  
   
@@ -107,36 +107,41 @@ class Model:
         inference_time = end - start  
         logger.debug(f"Inference time {inference_time} seconds.")  
   
+        return ori_pred, inference_time
+  
+    def translate(self, ori_pred, ori, tar):
         start = time.time()  
         try:
-            if ori != tar and ori_pred != '' and self.translate_method == "google":  
-                ori = 'zh-TW' if ori == 'zh' else ori  
-                tar = 'zh-TW' if tar == 'zh' else tar  
-                translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
-            elif ori != tar and ori_pred != '' and self.translate_method == "argos":  
-                ori = 'zt' if ori == 'zh' else ori  
-                tar = 'zt' if tar == 'zh' else tar  
-                translated_pred = argostranslate.translate.translate(ori_pred, ori, tar)  
-            elif ori != tar and ori_pred != '' and self.translate_method == "gpt-4o":  
-                try:
-                    translated_pred = self.gpt4o_translator.translate(ori_pred, ori, tar)  
-                except Exception as e:
-                    logger.error(f'translate() gpt-4o error:{e}')
-                    # change to google translate
+            if ori != tar and ori_pred != '':
+                if self.translate_method == "google":  
                     ori = 'zh-TW' if ori == 'zh' else ori  
                     tar = 'zh-TW' if tar == 'zh' else tar  
                     translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
+                elif self.translate_method == "argos":  
+                    ori = 'zt' if ori == 'zh' else ori  
+                    tar = 'zt' if tar == 'zh' else tar  
+                    translated_pred = argostranslate.translate.translate(ori_pred, ori, tar)  
+                elif self.translate_method == "gpt-4o":  
+                    try:
+                        translated_pred = self.gpt4o_translator.translate(ori_pred, ori, tar)  
+                    except Exception as e:
+                        logger.error(f'translate() gpt-4o error:{e}')
+                        # change to google translate
+                        ori = 'zh-TW' if ori == 'zh' else ori  
+                        tar = 'zh-TW' if tar == 'zh' else tar  
+                        translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
             else:  
-                translated_pred = ori_pred  
+                translated_pred = ori_pred
         except Exception as e:
             logger.error(f'translate() error:{e}')
-            translated_pred = ' '
-
+            translated_pred = ''
         end = time.time()  
         g_translate_time = end - start  
-  
-        return ori_pred, translated_pred, inference_time, g_translate_time, self.translate_method
-  
+        
+        return translated_pred, g_translate_time, self.translate_method
+        
+        
+
 if __name__ == "__main__":  
     # argos  
     model = Model()  

@@ -7,7 +7,8 @@ from lib.constant import WAITING_TIME
 logger = logging.getLogger(__name__)  
 
 def translate_and_print(model, audio_file_path, ori, tar, result_queue, stop_event):  
-    ori_pred, translated_pred, inference_time, g_translate_time, translate_method = model.translate(audio_file_path, ori, tar)  
+    ori_pred, inference_time = model.transcribe(audio_file_path, ori)  
+    translated_pred, g_translate_time, translate_method = model.translate(ori_pred, ori, tar)  
     result_queue.put((ori_pred, translated_pred, inference_time, g_translate_time, translate_method))  
     stop_event.set()  # Signal to stop the waiting thread  
 

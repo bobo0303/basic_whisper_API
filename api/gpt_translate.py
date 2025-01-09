@@ -50,7 +50,8 @@ class Gpt4oTranslate:
                     }
                 ] } 
             ],
-            max_tokens=4000 
+            max_tokens=4000,
+            temperature=0,  
         )  
         
         return response.choices[0].message.content
