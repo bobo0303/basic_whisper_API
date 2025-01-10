@@ -6,14 +6,14 @@ import logging
 import uvicorn  
 import datetime  
 import requests  
-import threading  
+import threading 
 from queue import Queue  
 from threading import Thread, Event  
 from api.model import Model  
 from api.threading_api import translate_and_print, waiting_times, stop_thread
 from lib.data_object import LoadModelRequest, LoadMethodRequest  
 from lib.base_object import BaseResponse  
-from lib.constant import ResponseSTT, TranscriptionData, TextData, LANGUAGE_LIST, TRANSLATE_METHODS  
+from lib.constant import ResponseSTT, TranscriptionData, VSTTranscriptionData, VSTResponseSTT, TextData, LANGUAGE_LIST, TRANSLATE_METHODS  
   
 #############################################################################  
   
@@ -308,7 +308,7 @@ async def translate(
       
     if o_lang not in LANGUAGE_LIST or t_lang not in LANGUAGE_LIST:  
         logger.info(f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.")  
-        return BaseResponse(status="FAILED", message=f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.", data=None)  
+        return BaseResponse(status="FAILED", message=f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.", data=response_data)  
     
     try:
         # Create a queue to hold the return value
@@ -352,6 +352,93 @@ async def translate(
         logger.error(f'iference() error:{e}')
         return BaseResponse(status="FAILED", message=f" | iference() error:{e} | ", data=response_data)  
 
+@app.post("/vst_translate")  
+async def translate(  
+    file: UploadFile = File(...),  
+    transcription_request: VSTTranscriptionData = Depends()  
+):  
+    """  
+    Transcribe and translate an audio file.  
+  
+    This endpoint receives an audio file and its associated metadata, and  
+    performs transcription and translation on the audio file.  
+  
+    :param file: UploadFile  
+        The audio file to be transcribed.  
+    :param audio_uid: str  
+        The unique ID of the audio.  
+    :param sample_rate: int  
+        The sample rate of audio.  
+    :param o_lang: str  
+        The original language of the audio.  
+    :param t_lang: str  
+        The target language for translation.  
+    :rtype: BaseResponse  
+        A response containing the transcription results.  
+    """  
+    
+    # Extract data from transcription_request  
+    times = str(datetime.datetime.now())
+    o_lang = transcription_request.o_lang.lower()
+    t_lang = transcription_request.t_lang.lower()
+    
+    response_data = VSTResponseSTT(
+        trans_text="",
+        )
+    
+    file_name = times + ".wav"  
+    audio_buffer = f"audio/{file_name}"  
+    with open(audio_buffer, 'wb') as f:  
+        f.write(file.file.read())  
+    if not os.path.exists(audio_buffer):  
+        return BaseResponse(status="FAILED", message="The audio file does not exist, please check the audio path.", data=response_data)  
+
+    if model.model_version is None:
+        return BaseResponse(status="FAILED", message="model haven't been load successfull. may out of memory please check again", data=response_data)  
+      
+    if o_lang not in LANGUAGE_LIST or t_lang not in LANGUAGE_LIST:  
+        logger.info(f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.")  
+        return BaseResponse(status="FAILED", message=f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.", data=response_data)  
+    
+    try:
+        # Create a queue to hold the return value
+        result_queue = Queue()
+        # Create an event to signal stopping  
+        stop_event = threading.Event()  
+
+        # Create timing thread and inference thread
+        time_thread = threading.Thread(target=waiting_times, args=(stop_event,))  
+        inference_thread = threading.Thread(target=translate_and_print, args=(model, audio_buffer, o_lang, t_lang, result_queue, stop_event))
+
+        # Start the threads
+        time_thread.start()
+        inference_thread.start()
+
+        # Wait for timing thread to complete check if the inference thread is active to close
+        time_thread.join()
+        stop_thread(inference_thread) 
+
+        os.remove(audio_buffer)  
+
+        # Get the result from the queue  
+        if not result_queue.empty():  
+            o_result, t_result, inference_time, g_translate_time, translate_method = result_queue.get() 
+            response_data.trans_text = t_result
+            logger.debug(response_data.model_dump_json())  
+            logger.info(f" | language: {o_lang} -> {t_lang} | translate_method: {translate_method} |")  
+            logger.info(f" | transcription: {o_result} |")  
+            logger.info(f" | translation: {t_result} |")  
+            logger.info(f" | inference has been completed in {inference_time:.2f} seconds. | translate has been completed in {g_translate_time:.2f} seconds.")  
+            state="OK"
+        else:
+            logger.info(f" | Inference has exceeded the upper limit time and has been stopped |")  
+            state="FAILED"
+
+        return BaseResponse(status=state, message=f" | transcription: {o_result} | translation: {t_result} | ", data=response_data)  
+    except Exception as e:
+        logger.error(f'iference() error:{e}')
+        return BaseResponse(status="FAILED", message=f" | iference() error:{e} | ", data=response_data)  
+
 @app.post("/text_translate")  
 async def text_translate(  
     translate_request: TextData = Depends()
@@ -359,18 +446,24 @@ async def text_translate(
     o_lang = translate_request.o_lang.lower()
     t_lang = translate_request.t_lang.lower()
     o_result = translate_request.ori_text
+    
+    response_data = VSTResponseSTT(
+        trans_text="",
+        )
+    
     try:
         translated_pred, g_translate_time, translate_method = model.translate(o_result, o_lang, t_lang)
+        response_data.trans_text = translated_pred
         logger.info(f" | language: {o_lang} -> {t_lang} | translate_method: {translate_method} | translate has been completed in {g_translate_time:.2f} seconds. |")  
         logger.info(f" | transcription: {o_result} |")  
         logger.info(f" | translation: {translated_pred} |") 
         state="OK"
-        return BaseResponse(status=state, message=f" | input text: {o_result} | translation: {translated_pred} | ", data=g_translate_time)  
+        return BaseResponse(status=state, message=f" | input text: {o_result} | translation: {translated_pred} | ", data=response_data)  
     except Exception as e:
         logger.error(f'iference() error:{e}')
         translated_pred = o_result
         state="FAILED"
-        return BaseResponse(status=state, message=f" | iference() error:{e} | ", data=g_translate_time)  
+        return BaseResponse(status=state, message=f" | iference() error:{e} | ", data=response_data)  
 
 
 # Clean up audio files  

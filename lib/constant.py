@@ -31,6 +31,7 @@ class TranscriptionData(BaseModel):
     times: datetime
     o_lang: str
     t_lang: str
+    
 
 #############################################################################
 
@@ -45,6 +46,19 @@ class ResponseSTT(BaseModel):
     audio_uid: str
     transcribe_time: float
     translate_time: float
+    
+#############################################################################
+
+class VSTTranscriptionData(BaseModel):
+    audio_uid: str
+    sample_rate: int
+    o_lang: str
+    t_lang: str
+    
+#############################################################################
+
+class VSTResponseSTT(BaseModel):
+    trans_text: str
 
 #############################################################################
 
