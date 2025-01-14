@@ -2,7 +2,6 @@ import logging
 import threading
 import ctypes
 
-from lib.constant import WAITING_TIME
 
 logger = logging.getLogger(__name__)  
 
@@ -33,5 +32,5 @@ def stop_thread(thread):
             logger.debug(" | PyThreadState_SetAsyncExc failed | ")
             raise SystemError("PyThreadState_SetAsyncExc failed")  
 
-def waiting_times(stop_event):  
-    stop_event.wait(WAITING_TIME)  # Wait for the event or timeout  
+def waiting_times(stop_event, times):  
+    stop_event.wait(times)  # Wait for the event or timeout  

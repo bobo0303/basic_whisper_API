@@ -13,7 +13,7 @@ from api.model import Model
 from api.threading_api import translate_and_print, waiting_times, stop_thread
 from lib.data_object import LoadModelRequest, LoadMethodRequest  
 from lib.base_object import BaseResponse  
-from lib.constant import ResponseSTT, TranscriptionData, VSTTranscriptionData, VSTResponseSTT, TextData, LANGUAGE_LIST, TRANSLATE_METHODS  
+from lib.constant import ResponseSTT, TranscriptionData, VSTTranscriptionData, VSTResponseSTT, TextData, WAITING_TIME, LANGUAGE_LIST, TRANSLATE_METHODS  
   
 #############################################################################  
   
@@ -317,7 +317,7 @@ async def translate(
         stop_event = threading.Event()  
 
         # Create timing thread and inference thread
-        time_thread = threading.Thread(target=waiting_times, args=(stop_event,))  
+        time_thread = threading.Thread(target=waiting_times, args=(stop_event, WAITING_TIME))  
         inference_thread = threading.Thread(target=translate_and_print, args=(model, audio_buffer, o_lang, t_lang, result_queue, stop_event))
 
         # Start the threads
@@ -406,8 +406,10 @@ async def translate(
         # Create an event to signal stopping  
         stop_event = threading.Event()  
 
+        timeout = transcription_request.timeout
+
         # Create timing thread and inference thread
-        time_thread = threading.Thread(target=waiting_times, args=(stop_event,))  
+        time_thread = threading.Thread(target=waiting_times, args=(stop_event, timeout))  
         inference_thread = threading.Thread(target=translate_and_print, args=(model, audio_buffer, o_lang, t_lang, result_queue, stop_event))
 
         # Start the threads
@@ -425,7 +427,7 @@ async def translate(
             o_result, t_result, inference_time, g_translate_time, translate_method = result_queue.get() 
             response_data.trans_text = t_result
             logger.debug(response_data.model_dump_json())  
-            logger.info(f" | language: {o_lang} -> {t_lang} | translate_method: {translate_method} |")  
+            logger.info(f" | language: {o_lang} -> {t_lang} | translate_method: {translate_method} | timeout time: {timeout} | ")  
             logger.info(f" | transcription: {o_result} |")  
             logger.info(f" | translation: {t_result} |")  
             logger.info(f" | inference has been completed in {inference_time:.2f} seconds. | translate has been completed in {g_translate_time:.2f} seconds.")  

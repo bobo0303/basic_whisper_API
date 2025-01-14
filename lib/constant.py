@@ -54,6 +54,7 @@ class VSTTranscriptionData(BaseModel):
     sample_rate: int
     o_lang: str
     t_lang: str
+    timeout: float
     
 #############################################################################
 
