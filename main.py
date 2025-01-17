@@ -19,6 +19,8 @@ from lib.constant import ResponseSTT, TranscriptionData, VSTTranscriptionData, V
   
 if not os.path.exists("./audio"):  
     os.mkdir("./audio")  
+if not os.path.exists("./logs"):  
+    os.mkdir("./logs")  
 # Configure logging  
 log_format = "%(asctime)s - %(message)s"  # Output timestamp and message content  
 log_file = "logs/app.log"  
@@ -383,7 +385,8 @@ async def translate(
     t_lang = transcription_request.t_lang.lower()
     
     response_data = VSTResponseSTT(
-        trans_text="",
+        ori_text="",
+        tar_text="",
         )
     
     file_name = times + ".wav"  
@@ -425,7 +428,8 @@ async def translate(
         # Get the result from the queue  
         if not result_queue.empty():  
             o_result, t_result, inference_time, g_translate_time, translate_method = result_queue.get() 
-            response_data.trans_text = t_result
+            response_data.ori_text = o_result
+            response_data.tar_text = t_result
             logger.debug(response_data.model_dump_json())  
             logger.info(f" | language: {o_lang} -> {t_lang} | translate_method: {translate_method} | timeout time: {timeout} | ")  
             logger.info(f" | transcription: {o_result} |")  
@@ -450,12 +454,14 @@ async def text_translate(
     o_result = translate_request.ori_text
     
     response_data = VSTResponseSTT(
-        trans_text="",
+        ori_text="",
+        tar_text="",
         )
     
     try:
         translated_pred, g_translate_time, translate_method = model.translate(o_result, o_lang, t_lang)
-        response_data.trans_text = translated_pred
+        response_data.ori_text = o_result
+        response_data.tar_text = translated_pred
         logger.info(f" | language: {o_lang} -> {t_lang} | translate_method: {translate_method} | translate has been completed in {g_translate_time:.2f} seconds. |")  
         logger.info(f" | transcription: {o_result} |")  
         logger.info(f" | translation: {translated_pred} |") 

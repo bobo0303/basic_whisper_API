@@ -59,7 +59,14 @@ class VSTTranscriptionData(BaseModel):
 #############################################################################
 
 class VSTResponseSTT(BaseModel):
-    trans_text: str
+    ori_text: str
+    tar_text: str
+
+#############################################################################
+
+class VSTResponseSTT(BaseModel):
+    ori_text: str
+    tar_text: str
 
 #############################################################################
 
