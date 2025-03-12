@@ -16,7 +16,7 @@ OPTIONS = {
     "language": "en",
     "task": "transcribe",
     "logprob_threshold": -1.0,
-    "no_speech_threshold": 0.2,
+    "no_speech_threshold": 0.6, # default 0.6 | ours 0.2
 }
 
 # The whisper inference max waiting time (if over the time will stop it)

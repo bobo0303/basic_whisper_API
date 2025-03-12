@@ -157,7 +157,7 @@ async def get_items():
     return BaseResponse(message=f" | inference model: You can choose ['medium', 'large_v2'] | translate method: You can choose {TRANSLATE_METHODS} | ", data=None)  
   
 @app.post("/change_translate_method")  
-async def change_translate_method(request: LoadMethodRequest):  
+async def change_translate_method(request: LoadMethodRequest):
     """  
     Change the translation method.  
   
