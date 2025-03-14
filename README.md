@@ -1,7 +1,9 @@
-# Real Time Translate by whisper ASR and translate function
+# Real Time Translate by sensvoice or vosk ASR and stranslate function (local version)
 
 ## Now support language
 
 ```
-["ZH", "EN", "JA", "KO", "DE", "SE"]
+["ZH", "EN", "JA", "KO"]
 ```
+
+## This is the local version

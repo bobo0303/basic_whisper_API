@@ -1,26 +1,38 @@
 from pydantic import BaseModel
-import torch
 from datetime import datetime
 
 #############################################################################
 
 class ModlePath(BaseModel):
-    large_v2: str = "/mnt/models/large-v2.pt"
-    medium: str = "/mnt/models/medium.pt"
-    # turbo: str = "models/large-v3-turbo.pt"
+    # funASR
+    sensevoice: str = "models/SenseVoiceSmall"
+    punc: str = "models/ct-punc"
+    # Vosk
+    vosk_cn: str = "models/vosk-model-cn-0.22"
+    vosk_en: str = "models/vosk-model-en-0.22"
+    vosk_ja: str = "models/vosk-model-ja-0.22"
+    vosk_small_cn: str = "models/vosk-model-small-cn-0.22"
+    vosk_small_en: str = "models/vosk-model-small-en-us-0.15"
+    vosk_small_ja: str = "models/vosk-model-small-ja-0.22"
+    vosk_small_ko: str = "models/vosk-model-small-ko-0.22"
+    # QWEN
+    qwen: str = "models/QWEN2.5-7B-Bnk-7e"
+
+    
 
 #############################################################################
-""" options for Whisper inference """
+""" options for inference """
+
 OPTIONS = {
-    "fp16": torch.cuda.is_available(),
-    "language": "en",
-    "task": "transcribe",
-    "logprob_threshold": -1.0,
-    "no_speech_threshold": 0.6, # default 0.6 | ours 0.2
+    "language": "auto",
+    "itn": True,
+    "ban_emo_unk": False,
 }
 
-# The whisper inference max waiting time (if over the time will stop it)
-WAITING_TIME = 3
+#############################################################################
+""" options for contral punc or not """
+
+IS_PUNC = True
 
 #############################################################################
 

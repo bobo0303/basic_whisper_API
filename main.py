@@ -117,7 +117,7 @@ async def load_default_model_preheat():
     logger.info("#####################################################")  
     logger.info(f"Start to loading default model.")  
     # load model  
-    default_model = "large_v2"  
+    default_model = "sensevoice"  
     model.load_model(default_model)  # Directly load the default model  
     logger.info(f"Default model {default_model} has been loaded successfully.")  
     # preheat  
