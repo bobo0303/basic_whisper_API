@@ -8,4 +8,6 @@ panding_audio.py
 .git  
 *.tmp  
 *.log  
+deb/*
+whl/*
   

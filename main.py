@@ -61,7 +61,7 @@ def run_inference():
                 ori_text="",  
                 trans_lang=payload['t_lang'],  
                 trans_text="",  
-                times=payload['titimesme'],  
+                times=payload['times'],  
                 audio_uid=payload['audio_uid'],  
             )  
               
@@ -440,7 +440,7 @@ async def translate(
             logger.info(f" | Inference has exceeded the upper limit time and has been stopped |")  
             state="FAILED"
 
-        return BaseResponse(status=state, message=f" | transcription: {o_result} | translation: {t_result} | ", data=response_data)  
+        return BaseResponse(status=state, message=f" | transcription: {response_data.ori_text} | translation: {response_data.tar_text} | ", data=response_data)  
     except Exception as e:
         logger.error(f'iference() error:{e}')
         return BaseResponse(status="FAILED", message=f" | iference() error:{e} | ", data=response_data)  
