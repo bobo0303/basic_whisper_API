@@ -1,21 +1,26 @@
 import os  
+import re
 import gc  
 import time  
+import json
 import torch
-import whisper  
 import logging  
+from pydub import AudioSegment  
 
-from googletrans import Translator  
 import argostranslate.translate  
-from api.gpt_translate import Gpt4oTranslate  
+# from api.qwen_translate import QWEN7BTranslate  
+from api.gemma_translate import Gemma4BTranslate  
+from funasr import AutoModel  
+from vosk import Model, KaldiRecognizer
+from .text_postprocess import extract_sensevoice_result_text
 
-from lib.constant import ModlePath, OPTIONS
+from lib.constant import ModlePath, OPTIONS, IS_PUNC
   
 os.environ["ARGOS_DEVICE_TYPE"] = "cuda"  # Set ARGOS to use CUDA  
   
 logger = logging.getLogger(__name__)  
   
-class Model:  
+class Models:  
     def __init__(self):  
         """  
         Initialize the Model class with default attributes.  
@@ -23,15 +28,21 @@ class Model:
         self.model = None  
         self.model_version = None  
         self.models_path = ModlePath()  
-        self.google_translator = Translator()  
-        self.gpt4o_translator = Gpt4oTranslate()  
-        self.translate_method = "google"  
-  
-    def load_model(self, models_name):  
+        # self.qwen_translator = QWEN7BTranslate()  
+        self.gemma_translator = Gemma4BTranslate()
+        self.translate_method = "gemma"  
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model_parameter = {"model": None,
+                                "disable_update": True,
+                                "disable_pbar": True,
+                                "device": self.device,            
+                                }
+        
+    def load_model(self, model_name):  
         """  
         Load the specified model based on the model's name.  
   
-        :param models_name: str  
+        :param model_name: str  
             The name of the model to be loaded.  
         :rtype: None  
         :logs: Loading status and time.  
@@ -40,23 +51,33 @@ class Model:
         try:  
             # Release old model resources  
             self._release_model() 
-            self.model_version = models_name
+            self.model_version = model_name
+            
+            if self.model_version == "sensevoice":
+                self.model_parameter['model'] = self.models_path.sensevoice
+                self.model = AutoModel(**self.model_parameter)
+            elif self.model_version.startswith("vosk"):
+                self.model = {}
+                for field_name, field_value in self.models_path.model_dump().items():  
+                    if field_name.startswith("vosk"):                   
+                        self.model[field_name] = (KaldiRecognizer(Model(field_value), 16000))
+            end = time.time()
+                    
+            print(f"Model '{self.model_version}' loaded in {end - start:.2f} secomds.")
 
-            # Choose model weight  
-            if models_name == "large_v2":  
-                self.model = whisper.load_model(self.models_path.large_v2)  
-            elif models_name == "medium":  
-                self.model = whisper.load_model(self.models_path.medium)  
-            elif models_name == "turbo":  
-                self.model = whisper.load_model(self.models_path.turbo)  
+            if self.model_version == "sensevoice" and IS_PUNC:
+                start = time.time()
+                print("Start to loading punch model.")
+                self.model_parameter['model'] = self.models_path.punc
+                self.punc_model = AutoModel(**self.model_parameter)
+                end = time.time()
+                print(f"Model \'ct-punc\' loaded in {end - start:.2f} secomds.")
 
-            device = "cuda" if torch.cuda.is_available() else "cpu"  
-            self.model.to(device)  
             end = time.time()  
-            logger.info(f"Model '{models_name}' loaded in {end - start:.2f} seconds.")  
+            logger.info(f"Model '{self.model_version}' loaded in {end - start:.2f} seconds.")  
         except Exception as e:
+            logger.error(f'load_model() models_name:{self.model_version} error:{e}')
             self.model_version = None
-            logger.error(f'load_model() models_name:{models_name} error:{e}')
   
     def _release_model(self):  
         """  
@@ -82,7 +103,46 @@ class Model:
         :rtype: None  
         """  
         self.translate_method = method_name  
-  
+        
+    def _convert_to_wav(self, file_path, target_sample_rate=16000):  
+        audio = AudioSegment.from_file(file_path)  
+        if audio.channels > 1:  
+            audio = audio.set_channels(1)  
+        audio = audio.set_frame_rate(target_sample_rate)  
+        audio.export(file_path, format="wav")  
+        
+    def _process_transcription(self, transcription):  
+        cjk_char_pattern = re.compile(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]')  
+        result = []  
+        i = 0  
+        length = len(transcription)  
+        
+        while i < length:  
+            char = transcription[i]  
+            
+            if char == ' ':  
+                if i > 0 and i < length - 1:  
+                    prev_char = transcription[i - 1]  
+                    next_char = transcription[i + 1]  
+                    
+                    if cjk_char_pattern.match(prev_char) and cjk_char_pattern.match(next_char):  
+                        i += 1  
+                        continue  
+                    elif cjk_char_pattern.match(prev_char) and next_char.isalpha():  
+                        result.append(' ')  
+                    elif prev_char.isalpha() and cjk_char_pattern.match(next_char):  
+                        result.append(' ')  
+                    else:  
+                        result.append(char)  
+                else:  
+                    result.append(char)  
+            else:  
+                result.append(char)  
+            
+            i += 1  
+        
+        return ''.join(result)  
+    
     def transcribe(self, audio_file_path, ori):  
         """  
         Perform transcription and translation on the given audio file.  
@@ -100,126 +160,75 @@ class Model:
         OPTIONS["language"] = ori  
   
         start = time.time()  
-        result = self.model.transcribe(audio_file_path, **OPTIONS)  
-        logger.debug(result)  
-        ori_pred = result['text']  
-        end = time.time()  
-        inference_time = end - start  
+        if self.model_version.startswith("vosk"):
+            for language in self.model:
+                if ori == language[-2:]:    
+                    rec = self.model[language]
+            self._convert_to_wav(audio_file_path)
+            with open(audio_file_path, "rb") as wf:
+                wf.read(44) # skip header
+                ori_pred = ""
+                while True:
+                    data = wf.read(4000)
+                    if len(data) == 0:
+                        break
+                    if rec.AcceptWaveform(data):
+                        res = json.loads(rec.Result())
+                        ori_pred += res["text"]
+                res = json.loads(rec.FinalResult())
+                ori_pred += res["text"]
+            ori_pred = self._process_transcription(ori_pred)  
+        else:
+            result = self.model.generate(audio_file_path, **OPTIONS)
+            ori_pred = result[0]['text']
+            if IS_PUNC:
+                ori_pred = self.punc_model.generate(input=ori_pred)
+                ori_pred = ori_pred[0]['text']
+        logger.debug(ori_pred)  
+        end = time.time()
+        inference_time = end-start
+
+        if self.model_version == 'sensevoice':
+            ori_pred = extract_sensevoice_result_text(ori_pred.lower())
+            
         logger.debug(f"Inference time {inference_time} seconds.")  
-  
+                                                                                                                                            
         return ori_pred, inference_time
   
     def translate(self, ori_pred, ori, tar):
         start = time.time()  
         try:
             if ori != tar and ori_pred != '':
-                if self.translate_method == "google":  
-                    ori = 'zh-TW' if ori == 'zh' else ori  
-                    tar = 'zh-TW' if tar == 'zh' else tar  
-                    translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
-                elif self.translate_method == "argos":  
+                if self.translate_method == "argos":  
                     ori = 'zt' if ori == 'zh' else ori  
                     tar = 'zt' if tar == 'zh' else tar  
-                    translated_pred = argostranslate.translate.translate(ori_pred, ori, tar)  
-                elif self.translate_method == "gpt-4o":  
+                    translated_pred = argostranslate.translate.translate(ori_pred, ori, tar)
+                elif self.translate_method == "gemma":  
                     try:
-                        translated_pred = self.gpt4o_translator.translate(ori_pred, ori, tar)  
+                        translated_pred = self.gemma_translator.translate(ori_pred, ori, tar)   
                     except Exception as e:
-                        logger.error(f'translate() gpt-4o error:{e}')
-                        # change to google translate
-                        ori = 'zh-TW' if ori == 'zh' else ori  
-                        tar = 'zh-TW' if tar == 'zh' else tar  
-                        translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
+                        translated_pred = ori_pred
+                        ori = 'zt' if ori == 'zh' else ori  
+                        tar = 'zt' if tar == 'zh' else tar  
+                        translated_pred = argostranslate.translate.translate(ori_pred, ori, tar)  
+                        logger.error(f'translate() QWEN-7B error:{e}') 
+                # elif self.translate_method == "qwen":  
+                #     try:
+                #         translated_pred = self.qwen_translator.translate(ori_pred, ori, tar)  
+                #     except Exception as e:
+                #         translated_pred = ori_pred
+                #         ori = 'zt' if ori == 'zh' else ori  
+                #         tar = 'zt' if tar == 'zh' else tar  
+                #         translated_pred = argostranslate.translate.translate(ori_pred, ori, tar)  
+                #         logger.error(f'translate() QWEN-7B error:{e}')
             else:  
                 translated_pred = ori_pred
         except Exception as e:
             logger.error(f'translate() error:{e}')
-            translated_pred = ''
+            translated_pred = ori_pred
         end = time.time()  
-        g_translate_time = end - start  
+        translate_time = end - start  
         
-        return translated_pred, g_translate_time, self.translate_method
+        return translated_pred, translate_time, self.translate_method
         
         
-
-if __name__ == "__main__":  
-    # argos  
-    model = Model()  
-    model.load_model("medium")  # Load the specified model by name  
-    audio_file_path = "/mnt/audio/test.wav"  # Replace with the actual audio file path  
-    ori = "en"  # Original language  
-    tar = "ko"  # Target language  
-    ori_pred, translated_pred, inference_time, g_translate_time = model.translate(audio_file_path, ori, tar)  
-    print(f"Original Transcription: {ori_pred}")  
-    print(f"Translated Transcription: {translated_pred}")  
-    print(f"Inference Time: {inference_time} seconds")  
-    print(f"Translation Time: {g_translate_time} seconds")  
-
-
-# if __name__ == "__main__":  
-#     import threading  
-#     import ctypes  
-#     import time  
-    
-#     def translate_and_print(model, audio_file_path, ori, tar):  
-#         print("thread 2 start")
-#         ori_pred, translated_pred, inference_time, g_translate_time, translate_method = model.translate(audio_file_path, ori, tar)  
-#         print(f"2Original Transcription: {ori_pred}")  
-#         print(f"2Translated Transcription: {translated_pred}")  
-#         print(f"2Inference Time: {inference_time} seconds")  
-#         print(f"2Translation Time: {g_translate_time} seconds") 
-#         print("thread 2 end")
-
-#         return ori_pred, translated_pred, inference_time, g_translate_time, translate_method  
-        
-
-#     def get_thread_id(thread):  
-#         if not thread.is_alive():  
-#             raise threading.ThreadError("The thread is not active")  
-#         for tid, tobj in threading._active.items():  
-#             if tobj is thread:  
-#                 return tid  
-#         raise AssertionError("Could not determine the thread ID")  
-    
-#     def stop_thread(thread):  
-#         thread_id = get_thread_id(thread)  
-#         res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread_id), ctypes.py_object(SystemExit))  
-#         if res == 0:  
-#             raise ValueError("Invalid thread ID")  
-#         elif res != 1:  
-#             ctypes.pythonapi.PyThreadState_SetAsyncExc(thread_id, 0)  
-#             raise SystemError("PyThreadState_SetAsyncExc failed")  
-        
-#     model = Model()  
-#     model.load_model("medium")  # Load the specified model by name  
-  
-#     audio_file_path_1 = "/mnt/audio/123.wav"  # Replace with the actual audio file path  
-#     audio_file_path_2 = "/mnt/audio/test.wav"  # Replace with the actual audio file path  
-#     ori = "en"  # Original language  
-#     tar = "ko"  # Target language  
-  
-#     def times():  
-#         print("Thread 1 is running")  
-#         time.sleep(0.5)  # Simulate some work in thread 1  
-#         print("Thread 1 is done")  
-  
-#     # Create two threads  
-#     thread1 = threading.Thread(target=times)  
-#     thread2 = threading.Thread(target=translate_and_print, args=(model, audio_file_path_2, ori, tar))  
-  
-#     # Start the threads  
-#     thread1.start()  
-#     thread2.start()  
-  
-#     # Wait for thread 1 to complete  
-#     thread1.join()  
-      
-#     # Forcefully stop thread 2  
-#     stop_thread(thread2) 
-
-#     ori_pred, translated_pred, inference_time, g_translate_time, _ = model.translate(audio_file_path_1, ori, tar)  
-#     print(f"Original Transcription: {ori_pred}")  
-#     print(f"Translated Transcription: {translated_pred}")  
-#     print(f"Inference Time: {inference_time} seconds")  
-#     print(f"Translation Time: {g_translate_time} seconds") 
-

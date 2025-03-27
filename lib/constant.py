@@ -4,21 +4,26 @@ from datetime import datetime
 #############################################################################
 
 class ModlePath(BaseModel):
-    # funASR
+    ########### funASR ###########
     sensevoice: str = "models/SenseVoiceSmall"
     punc: str = "models/ct-punc"
-    # Vosk
-    vosk_cn: str = "models/vosk-model-cn-0.22"
-    vosk_en: str = "models/vosk-model-en-0.22"
-    vosk_ja: str = "models/vosk-model-ja-0.22"
-    vosk_small_cn: str = "models/vosk-model-small-cn-0.22"
-    vosk_small_en: str = "models/vosk-model-small-en-us-0.15"
-    vosk_small_ja: str = "models/vosk-model-small-ja-0.22"
-    vosk_small_ko: str = "models/vosk-model-small-ko-0.22"
-    # QWEN
-    qwen: str = "models/QWEN2.5-7B-Bnk-7e"
+    ########### Vosk ###########
+    # vosk_cn: str = "models/vosk_weights/vosk-model-cn-0.22"   # 存在地端藥用要再上傳過來
+    # vosk_en: str = "models/vosk_weights/vosk-model-en-us-0.22"    # 存在地端藥用要再上傳過來
+    # vosk_ja: str = "models/vosk_weights/vosk-model-ja-0.22"   # 存在地端藥用要再上傳過來
+    vosk_small_zh: str = "models/vosk/vosk-model-small-cn-0.22"
+    vosk_small_en: str = "models/vosk/vosk-model-en-us-0.22-lgraph"
+    vosk_small_ja: str = "models/vosk/vosk-model-small-ja-0.22"
+    vosk_small_ko: str = "models/vosk/vosk-model-small-ko-0.22"
+    ########### QWEN ###########
+    # qwen: str = "models/QWEN2.5-7B-Bnk-7e"    # AGX 32G can’t run
+    ########### Gemma-4B ###########
+    # gemma: str = "models/gemma-3-4b-it"
+    gemma: str = "google/gemma-3-4b-it"
 
-    
+#############################################################################
+
+WAITING_TIME = 30
 
 #############################################################################
 """ options for inference """
@@ -93,17 +98,14 @@ LANGUAGE_LIST = ['zh', 'en', 'ja', 'ko', "de", "es"]
 
 #############################################################################
 
-# google or argos or gpt-4o
-TRANSLATE_METHODS = ['google', 'argos', 'gpt-4o']
+
+TRANSCRIBE_METHODS = ['sensevoice', 'vosk']
+TRANSLATE_METHODS = ['argos']
 
 #############################################################################
 
-AZURE_CONFIG = '/mnt/lib/azure_config.yaml'
-
-#############################################################################
-
-# GPT-4o prompt
-# LANGUAGE_QUEUE = ["zh", "en", "ja", "ko", "de", "es"]
+# qwen prompt
+# LANGUAGE_QUEUE = ["zh", "en", "ja", "ko"]
 
 SOURCE_LANGUAGE = [  
     ["繁體中文", "Traditional Chinese", "繁体字中国語", "중국어 번체", "Traditionelles Chinesisch", "Chino Tradicional"],  

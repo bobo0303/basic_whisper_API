@@ -1,3 +1,10 @@
+# basic
+numpy==1.22.3
+typing-extensions==4.12.2
+pytz
+python-multipart
+pydub  
+
 # FastAPI 
 uvicorn>=0.21.1  
 fastapi>=0.95.1  
@@ -11,9 +18,10 @@ huggingface_hub==0.24.6
 # Vosk
 vosk
 
-# qwen
-transformers
-
 # Argos Translate
 argostranslate
 h2==4.1.0
+
+# Gemma (request python >= 3.9.0)
+transformers==4.50.1
+accelerate

@@ -1,21 +1,23 @@
 
-FROM nvcr.io/nvidia/l4t-pytorch:r35.2.1-pth2.0-py3
+# FROM nvcr.io/nvidia/l4t-pytorch:r35.1.0-pth1.13-py3
+FROM dustynv/l4t-pytorch:r36.2.0    
+# dustynv 的 CT2 有異常待解決 (argos 會失敗)
 
 ARG DEBIAN_FRONTEND=noninteractive  
 ARG TARGETARCH  
   
-# 設置工作目錄  
-WORKDIR /app  
-  
-# 复制 app 資料夾到 Docker 映像中的 /app 目錄  
-COPY . /app  
+# WORKDIR /app  
+# COPY . /app  
+
+WORKDIR /mnt
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 vim ffmpeg zip unzip htop screen tree build-essential gcc g++ make unixodbc-dev curl python3-dev python3-distutils wget libvulkan1 libfreeimage-dev \  
     && apt-get clean && rm -rf /var/lib/apt/lists  
 
-# 安裝 python packages  
-RUN pip3 install -r requirements.txt  
+# 安裝 python packages
+COPY requirements.txt /tmp/requirements.txt  
+RUN pip3 install -r /tmp/requirements.txt  
   
 # 安裝 argos 的語言包  
 RUN argospm update  
