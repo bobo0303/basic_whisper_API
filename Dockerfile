@@ -29,3 +29,10 @@ ENV LANG=C.UTF-8
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility  
 ENV NVIDIA_VISIBLE_DEVICES=all  
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:/usr/lib/llvm-10/lib:$LD_LIBRARY_PATH  
+
+
+# docker build --build-arg HF_API_TOKEN=XXXX -t your_image_name .  
+# 在 docker build 的時候記得帶入 --build-arg HF_API_TOKEN=XXXX
+ARG HF_API_TOKEN  
+ENV HF_API_TOKEN=${HF_API_TOKEN} 
+RUN echo $HF_API_TOKEN | huggingface-cli login --token  

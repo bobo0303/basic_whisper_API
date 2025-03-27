@@ -4,6 +4,7 @@ typing-extensions==4.12.2
 pytz
 python-multipart
 pydub  
+huggingface-hub
 
 # FastAPI 
 uvicorn>=0.21.1  
