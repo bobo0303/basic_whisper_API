@@ -7,7 +7,9 @@ from datetime import datetime
 class ModlePath(BaseModel):
     large_v2: str = "/mnt/models/large-v2.pt"
     medium: str = "/mnt/models/medium.pt"
-    # turbo: str = "models/large-v3-turbo.pt"
+    sensevoice: str = "/mnt/models/SenseVoiceSmall"
+    punc: str = "/mnt/models/ct-punc"
+    gemma: str = "google/gemma-3-4b-it"
 
 #############################################################################
 """ options for Whisper inference """
@@ -19,16 +21,30 @@ OPTIONS = {
     "no_speech_threshold": 0.6, # default 0.6 | ours 0.2
 }
 
+SENSEVOCIE_PARMATER = {"model": "/mnt/models/SenseVoiceSmall",
+                        "disable_update": True,
+                        "disable_pbar": True,
+                        "device": "cuda" if torch.cuda.is_available() else "cpu",            
+                        }
+
+PUNC_PARMATER = {"model": "/mnt/models/ct-punc",
+                        "disable_update": True,
+                        "disable_pbar": True,
+                        "device": "cuda" if torch.cuda.is_available() else "cpu",            
+                        }
+
 # The whisper inference max waiting time (if over the time will stop it)
-WAITING_TIME = 3
+WAITING_TIME = 5
+
+IS_PUNC = True
 
 #############################################################################
 
 class TranscriptionData(BaseModel):
-    meeting_id: str
-    device_id: str
-    audio_uid: str
-    times: datetime
+    meeting_id: str = "test"
+    device_id: str = "test"
+    audio_uid: str = "test"
+    times: datetime = "2025-11-11 11:11:11"
     o_lang: str
     t_lang: str
     
@@ -82,11 +98,13 @@ LANGUAGE_LIST = ['zh', 'en', 'ja', 'ko', "de", "es"]
 #############################################################################
 
 # google or argos or gpt-4o
-TRANSLATE_METHODS = ['google', 'argos', 'gpt-4o']
+ASR_METHODS = ['medium', 'large_v2', 'sensevoice']
+TRANSLATE_METHODS = ['google', 'gemma', 'ollama']
 
 #############################################################################
 
 AZURE_CONFIG = '/mnt/lib/azure_config.yaml'
+GEMMA_12B_QAT_CONFIG = '/mnt/lib/gemma_12b_qat.yaml'
 
 #############################################################################
 

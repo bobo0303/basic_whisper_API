@@ -4,6 +4,7 @@ deb/*
 lib/azure_config.yaml
 app.yml
 audio/202*
+whl/*
 
 # Byte-compiled / optimized / DLL files  
 __pycache__/  

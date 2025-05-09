@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
+from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Depends  
 import os  
 import time  
 import pytz  
@@ -13,7 +13,7 @@ from api.model import Model
 from api.threading_api import translate_and_print, waiting_times, stop_thread
 from lib.data_object import LoadModelRequest, LoadMethodRequest  
 from lib.base_object import BaseResponse  
-from lib.constant import ResponseSTT, TranscriptionData, VSTTranscriptionData, VSTResponseSTT, TextData, WAITING_TIME, LANGUAGE_LIST, TRANSLATE_METHODS  
+from lib.constant import ResponseSTT, TranscriptionData, VSTTranscriptionData, VSTResponseSTT, TextData, WAITING_TIME, LANGUAGE_LIST, ASR_METHODS, TRANSLATE_METHODS  
   
 #############################################################################  
   
@@ -21,10 +21,11 @@ if not os.path.exists("./audio"):
     os.mkdir("./audio")  
 if not os.path.exists("./logs"):  
     os.mkdir("./logs")  
+    
 # Configure logging  
 log_format = "%(asctime)s - %(message)s"  # Output timestamp and message content  
 log_file = "logs/app.log"  
-logging.basicConfig(level=logging.INFO, format=log_format)  # ['DEBUG', 'INFO']  
+logging.basicConfig(level=logging.INFO, format=log_format)  
   
 # Create a file handler  
 file_handler = logging.handlers.RotatingFileHandler(  
@@ -32,8 +33,19 @@ file_handler = logging.handlers.RotatingFileHandler(
 )  
 file_handler.setFormatter(logging.Formatter(log_format))  
   
+# Create a console handler  
+console_handler = logging.StreamHandler()  
+console_handler.setFormatter(logging.Formatter(log_format))  
+  
 logger = logging.getLogger(__name__)  
-logger.addHandler(file_handler)  
+logger.setLevel(logging.INFO)  # Ensure logger level is set to INFO or lower  
+  
+# Clear existing handlers to prevent duplicate logs  
+if not logger.handlers:  
+    logger.addHandler(file_handler)  
+    logger.addHandler(console_handler)  # Add console handler 
+
+logger.propagate = False  
   
 # Configure UTC+8 time  
 utc_now = datetime.datetime.now(pytz.utc)  
@@ -47,57 +59,6 @@ queue = Queue()
 @app.get("/")  
 def HelloWorld(name:str=None):  
     return {"Hello": f"World {name}"}  
-
-def run_inference():  
-    try:  
-        while True:  
-            payload = queue.get()  
-            audio_buffer = payload['file']  
-              
-            response_data = ResponseSTT(  
-                meeting_id=payload['meeting_id'],  
-                device_id=payload['device_id'],  
-                ori_lang=payload['o_lang'],  
-                ori_text="",  
-                trans_lang=payload['t_lang'],  
-                trans_text="",  
-                times=payload['times'],  
-                audio_uid=payload['audio_uid'],  
-            )  
-              
-            if response_data.ori_lang in LANGUAGE_LIST and response_data.trans_lang in LANGUAGE_LIST:  
-                ori_lang = LANGUAGE_LIST[response_data.ori_lang]  
-                tar_lang = LANGUAGE_LIST[response_data.trans_lang]  
-            else:  
-                logger.info(f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.")  
-                continue  
-              
-            if os.path.exists(audio_buffer):  
-                o_result, inference_time = model.transcribe(audio_buffer, ori_lang)  
-                t_result, g_translate_time, translate_method = model.translate(o_result, ori_lang, tar_lang)  
-                response_data.ori_text = o_result  
-                response_data.trans_text = t_result  
-                  
-                logger.debug(response_data.model_dump_json())  
-                logger.info(f" | device_id: {response_data.device_id} | audio_uid: {response_data.audio_uid} | language: {ori_lang} -> {tar_lang} | translate_method: {translate_method} | ")  
-                logger.info(f" | transcription: {o_result} |")  
-                logger.info(f" | translation: {t_result} |")  
-                logger.info(f"inference has been completed in {inference_time:.2f} seconds. | translate has been completed in {g_translate_time:.2f} seconds.")  
-                  
-                # Prevent blocking  
-                url = f"http://0.0.0.0:8080/receive/stt"   # Orin NX  
-                headers = {'Content-Type': 'application/json; charset=utf-8'}  
-                requests.post(url, data=response_data.model_dump_json().encode('utf-8'), headers=headers)  
-                  
-                if os.path.exists(audio_buffer):  
-                    os.remove(audio_buffer)  
-              
-            time.sleep(0.5)  
-    except Exception as e:  
-        logger.error(e)
-  
-# Turn-on the worker thread.  
-thread = threading.Thread(target=run_inference, daemon=True).start()  
 
 ##############################################################################  
   
@@ -114,29 +75,29 @@ async def load_default_model_preheat():
     :rtype: None: The function does not return any value.  
     :logs: Loading and preheating status and times.  
     """  
-    logger.info("#####################################################")  
-    logger.info(f"Start to loading default model.")  
+    logger.info(f" | ##################################################### | ")  
+    logger.info(f" | Start to loading default model. | ")  
     # load model  
     default_model = "large_v2"  
     model.load_model(default_model)  # Directly load the default model  
-    logger.info(f"Default model {default_model} has been loaded successfully.")  
+    logger.info(f" | Default model {default_model} has been loaded successfully. | ")  
     # preheat  
-    logger.info(f"Start to preheat model.")  
+    logger.info(f" | Start to preheat model. | ")  
     default_audio = "audio/test.wav"  
     start = time.time()  
     for _ in range(5):  
         model.transcribe(default_audio, "en")  
     end = time.time()  
       
-    logger.info(f"Preheat model has been completed in {end - start:.2f} seconds.")  
-    logger.info("#####################################################")  
+    logger.info(f" | Preheat model has been completed in {end - start:.2f} seconds. | ")  
+    logger.info(f" | ##################################################### | ")  
     delete_old_audio_files()  
 
 @app.get("/get_current_ASR_model")  
 async def get_items():  
-    logger.info("################# inference model #############################")  
-    logger.info(f"current ASR model is {model.model_version} ")  
-    logger.info("###############################################################")  
+    logger.info(f" | ################# inference model ############################# | ")  
+    logger.info(f" | current ASR model is {model.model_version} ")  
+    logger.info(f" | ############################################################### | ")  
     return BaseResponse(message=f" | current ASR model is {model.model_version} | ", data=model.model_version)  
 
 @app.get("/list_optional_items")  
@@ -149,12 +110,12 @@ async def get_items():
   
     :rtype: str: A string listing the available inference models and translation methods.  
     """  
-    logger.info("################# inference model #############################")  
-    logger.info("You can choose ['medium', 'large_v2']")  
-    logger.info("################# translate methods ###########################")  
-    logger.info("You can choose ['google', 'argos', 'gpt-4o']")  
-    logger.info("###############################################################")  
-    return BaseResponse(message=f" | inference model: You can choose ['medium', 'large_v2'] | translate method: You can choose {TRANSLATE_METHODS} | ", data=None)  
+    logger.info(f" | ################# inference model ############################# | ")  
+    logger.info(f" | You can choose {ASR_METHODS} | ")  
+    logger.info(f" | ################# translate methods ########################### | ")  
+    logger.info(f" | You can choose {TRANSLATE_METHODS} | ")  
+    logger.info(f" | ############################################################### | ")  
+    return BaseResponse(message=f" | inference model: You can choose {ASR_METHODS} | translate method: You can choose {TRANSLATE_METHODS} | ", data=None)  
   
 @app.post("/change_translate_method")  
 async def change_translate_method(request: LoadMethodRequest):
@@ -172,8 +133,8 @@ async def change_translate_method(request: LoadMethodRequest):
     method_name = request.method_name.lower()  
     if method_name in TRANSLATE_METHODS:  
         model.change_translate_method(method_name)  
-        logger.info(f"Translate method {method_name} has been changed successfully.")  
-    return BaseResponse(message=f"Translate method {method_name} has been changed successfully.", data=None)  
+        logger.info(f" | Translate method '{method_name}' has been changed successfully. | ")  
+    return BaseResponse(message=f" | Translate method '{method_name}' has been changed successfully. | ", data=None)  
   
 @app.post("/load_model")  
 async def load_model(request: LoadModelRequest):  
@@ -191,68 +152,12 @@ async def load_model(request: LoadModelRequest):
     if not hasattr(model.models_path, models_name):  
         raise HTTPException(status_code=400, detail="Model not found")  
     model.load_model(models_name)  
-    logger.info(f"Model {request.models_name} has been loaded successfully.")  
-    return BaseResponse(message=f"Model {request.models_name} has been loaded successfully.", data=None)  
+    logger.info(f" | Model {request.models_name} has been loaded successfully. | ")  
+    return BaseResponse(message=f" | Model {request.models_name} has been loaded successfully. | ", data=None)  
   
-@app.post("/queue_translate")  
-async def queue_translate(  
-    file: UploadFile = File(...),  
-    meeting_id: str = Form(...),  
-    device_id: str = Form(...),  
-    audio_uid: str = Form(...),  
-    times: str = Form(...),  
-    o_lang: str = Form(...),  
-    t_lang: str = Form(...),  
-):  
-    """  
-    Queue an audio file for transcription and translation.  
   
-    This endpoint receives an audio file and its associated metadata, and  
-    adds it to the processing queue for transcription and translation.  
-  
-    :param file: UploadFile  
-        The audio file to be transcribed.  
-    :param meeting_id: str  
-        The ID of the meeting.  
-    :param device_id: str  
-        The ID of the device.  
-    :param audio_uid: str  
-        The unique ID of the audio.  
-    :param time: str  
-        The start time of the audio.  
-    :param o_lang: str  
-        The original language of the audio.  
-    :param t_lang: str  
-        The target language for translation.  
-    :rtype: BaseResponse  
-        A response indicating that the data has been received and added to the queue.  
-    """  
-    file_name = times + ".wav"  
-    audio_buffer = f"audio/{file_name}"  
-    with open(audio_buffer, 'wb') as f:  
-        f.write(file.file.read())  
-    if not os.path.exists(audio_buffer):  
-        raise FileNotFoundError("The audio file does not exist, please check the audio path.")  
-       
-      
-    # Combine all parameters into a dictionary  
-    data = {  
-        "file": audio_buffer,  
-        "meeting_id": meeting_id,  
-        "device_id": device_id,  
-        "audio_uid": audio_uid,  
-        "times": times,  
-        "o_lang": o_lang,  
-        "t_lang": t_lang,  
-    }  
-      
-    # Put the dictionary into the queue  
-    queue.put(data)  
-      
-    return BaseResponse(message="Data received and added to queue")  
-  
-@app.post("/translate")  
-async def translate(  
+@app.post("/rtt_translate")  
+async def rtt_translate(  
     file: UploadFile = File(...),  
     transcription_request: TranscriptionData = Depends()  
 ):  
@@ -303,14 +208,14 @@ async def translate(
     with open(audio_buffer, 'wb') as f:  
         f.write(file.file.read())  
     if not os.path.exists(audio_buffer):  
-        return BaseResponse(status="FAILED", message="The audio file does not exist, please check the audio path.", data=response_data)  
-
+        return BaseResponse(status="FAILED", message=" | The audio file does not exist, please check the audio path. | ", data=response_data)  
+    
     if model.model_version is None:
-        return BaseResponse(status="FAILED", message="model haven't been load successfull. may out of memory please check again", data=response_data)  
-      
-    if o_lang not in LANGUAGE_LIST or t_lang not in LANGUAGE_LIST:  
-        logger.info(f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.")  
-        return BaseResponse(status="FAILED", message=f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.", data=response_data)  
+        return BaseResponse(status="FAILED", message=" | model haven't been load successfull. may out of memory please check again | ", data=response_data)
+
+    if o_lang not in LANGUAGE_LIST or t_lang not in LANGUAGE_LIST:
+        logger.info(f" | One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}. | ")
+        return BaseResponse(status="FAILED", message=f" | One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}. | ", data=response_data)
     
     try:
         # Create a queue to hold the return value
@@ -353,9 +258,111 @@ async def translate(
     except Exception as e:
         logger.error(f'iference() error:{e}')
         return BaseResponse(status="FAILED", message=f" | iference() error:{e} | ", data=response_data)  
+    
+# @app.websocket("/ws/rtt_translate")  
+# async def websocket_endpoint(websocket: WebSocket):  
+#     await websocket.accept()  
+#     """
+#     Transcribe and translate an audio file.  
+  
+#     This endpoint receives an audio file and its associated metadata, and  
+#     performs transcription and translation on the audio file.  
+  
+#     :param file: UploadFile  
+#         The audio file to be transcribed.  
+#     :param meeting_id: str  
+#         The ID of the meeting.  
+#     :param device_id: str  
+#         The ID of the device.  
+#     :param audio_uid: str  
+#         The unique ID of the audio.  
+#     :param time: str  
+#         The start time of the audio.  
+#     :param o_lang: str  
+#         The original language of the audio.  
+#     :param t_lang: str  
+#         The target language for translation.  
+#     :rtype: BaseResponse  
+#         A response containing the transcription results.  
+#     """
+    
+#     if model.model_version is None:
+#         return BaseResponse(status="FAILED", message=" | model haven't been load successfull. may out of memory please check again | ", data=response_data)  
+      
+#     if o_lang not in LANGUAGE_LIST or t_lang not in LANGUAGE_LIST:  
+#         logger.info(f" | One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}. | ")  
+#         return BaseResponse(status="FAILED", message=f" | One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}. | ", data=response_data) 
+    
+#     # Extract data from transcription_request  
+#     times = str(transcription_request.times)
+#     o_lang = transcription_request.o_lang.lower()
+#     t_lang = transcription_request.t_lang.lower()
+
+#     response_data = ResponseSTT(  
+#         meeting_id=transcription_request.meeting_id,  
+#         device_id=transcription_request.device_id,  
+#         ori_lang=o_lang,  
+#         ori_text="",  
+#         trans_lang=t_lang,  
+#         trans_text="",  
+#         times=times,  
+#         audio_uid=transcription_request.audio_uid, 
+#         transcribe_time=0.0,
+#         translate_time=0.0, 
+#     )  
+    
+#     file_name = times + ".wav"  
+#     audio_buffer = f"audio/{file_name}"  
+#     with open(audio_buffer, 'wb') as f:  
+#         f.write(file.file.read())  
+#     if not os.path.exists(audio_buffer):  
+#         return BaseResponse(status="FAILED", message=" | The audio file does not exist, please check the audio path. | ", data=response_data)  
+ 
+    
+#     try:
+#         # Create a queue to hold the return value
+#         result_queue = Queue()
+#         # Create an event to signal stopping  
+#         stop_event = threading.Event()  
+
+#         # Create timing thread and inference thread
+#         time_thread = threading.Thread(target=waiting_times, args=(stop_event, WAITING_TIME))  
+#         inference_thread = threading.Thread(target=translate_and_print, args=(model, audio_buffer, o_lang, t_lang, result_queue, stop_event))
+
+#         # Start the threads
+#         time_thread.start()
+#         inference_thread.start()
+
+#         # Wait for timing thread to complete check if the inference thread is active to close
+#         time_thread.join()
+#         stop_thread(inference_thread) 
+
+#         os.remove(audio_buffer)  
+
+#         # Get the result from the queue  
+#         if not result_queue.empty():  
+#             o_result, t_result, inference_time, g_translate_time, translate_method = result_queue.get() 
+#             response_data.ori_text = o_result
+#             response_data.trans_text = t_result
+#             response_data.transcribe_time = inference_time
+#             response_data.translate_time = g_translate_time
+#             logger.debug(response_data.model_dump_json())  
+#             logger.info(f" | device_id: {response_data.device_id} | audio_uid: {response_data.audio_uid} | language: {o_lang} -> {t_lang} | translate_method: {translate_method} |")  
+#             logger.info(f" | transcription: {response_data.ori_text} |")  
+#             logger.info(f" | translation: {response_data.trans_text} |")  
+#             logger.info(f" | inference has been completed in {inference_time:.2f} seconds. | translate has been completed in {g_translate_time:.2f} seconds.")  
+#             state="OK"
+#         else:
+#             logger.info(f" | Inference has exceeded the upper limit time and has been stopped |")  
+#             state="FAILED"
+
+#         return BaseResponse(status=state, message=f" | transcription: {response_data.ori_text} | translation: {response_data.trans_text} | ", data=response_data)  
+#     except Exception as e:
+#         logger.error(f'iference() error:{e}')
+#         return BaseResponse(status="FAILED", message=f" | iference() error:{e} | ", data=response_data)  
 
 @app.post("/vst_translate")  
-async def translate(  
+async def vst_translate(  
     file: UploadFile = File(...),  
     transcription_request: VSTTranscriptionData = Depends()  
 ):  
@@ -394,14 +401,14 @@ async def translate(
     with open(audio_buffer, 'wb') as f:  
         f.write(file.file.read())  
     if not os.path.exists(audio_buffer):  
-        return BaseResponse(status="FAILED", message="The audio file does not exist, please check the audio path.", data=response_data)  
+        return BaseResponse(status="FAILED", message=" | The audio file does not exist, please check the audio path. | ", data=response_data)  
 
     if model.model_version is None:
-        return BaseResponse(status="FAILED", message="model haven't been load successfull. may out of memory please check again", data=response_data)  
+        return BaseResponse(status="FAILED", message=" | model haven't been load successfull. may out of memory please check again | ", data=response_data)  
       
     if o_lang not in LANGUAGE_LIST or t_lang not in LANGUAGE_LIST:  
-        logger.info(f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.")  
-        return BaseResponse(status="FAILED", message=f"One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}.", data=response_data)  
+        logger.info(f" | One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}. | ")  
+        return BaseResponse(status="FAILED", message=f" | One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}. | ", data=response_data)  
     
     try:
         # Create a queue to hold the return value
@@ -499,7 +506,7 @@ def delete_old_audio_files():
             # Delete files older than a day  
             if current_time - file_creation_time > 24 * 60 * 60:  
                 os.remove(file_path)  
-                logger.info(f"Deleted old file: {file_path}")  
+                logger.info(f" | Deleted old file: {file_path} | ")  
   
 # Daily task scheduling  
 def schedule_daily_task(stop_event):  
@@ -518,13 +525,14 @@ task_thread.start()
 def shutdown_event():  
     stop_event.set()  
     task_thread.join()  
-    logger.info("Scheduled task has been stopped.")  
+    model.ollama_translator.close()
+    logger.info(" | Scheduled task has been stopped. | ")  
   
 if __name__ == "__main__":  
     port = int(os.environ.get("PORT", 80))  
     uvicorn.config.LOGGING_CONFIG["formatters"]["default"]["fmt"] = "%(asctime)s [%(name)s] %(levelprefix)s %(message)s"  
     uvicorn.config.LOGGING_CONFIG["formatters"]["access"]["fmt"] = '%(asctime)s [%(name)s] %(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'  
-    uvicorn.run(app, log_level='info', host='0.0.0.0', port=port)  
+    uvicorn.run(app, log_level='info', host='0.0.0.0', port=port)   
     
     
  

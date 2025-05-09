@@ -18,7 +18,7 @@ def get_thread_id(thread):
         if tobj is thread:  
             return tid  
     logger.debug(" | Could not determine the thread ID | ")
-    raise AssertionError("Could not determine the thread ID")  
+    raise AssertionError(" | Could not determine the thread ID | ")  
 
 def stop_thread(thread):  
     thread_id = get_thread_id(thread)  
@@ -26,11 +26,11 @@ def stop_thread(thread):
         res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread_id), ctypes.py_object(SystemExit))  
         if res == 0:  
             logger.debug(" | Invalid thread ID | ")
-            raise ValueError("Invalid thread ID")  
+            raise ValueError(" | Invalid thread ID | ")  
         elif res != 1:  
             ctypes.pythonapi.PyThreadState_SetAsyncExc(thread_id, 0)  
             logger.debug(" | PyThreadState_SetAsyncExc failed | ")
-            raise SystemError("PyThreadState_SetAsyncExc failed")  
+            raise SystemError(" | PyThreadState_SetAsyncExc failed | ")  
 
 def waiting_times(stop_event, times):  
     stop_event.wait(times)  # Wait for the event or timeout  

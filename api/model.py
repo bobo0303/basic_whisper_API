@@ -6,12 +6,15 @@ import whisper
 import logging  
 
 from googletrans import Translator  
-import argostranslate.translate  
-from api.gpt_translate import Gpt4oTranslate  
+from funasr import AutoModel  
 
-from lib.constant import ModlePath, OPTIONS
+from api.gemma_translate import Gemma4BTranslate  
+from api.ollama_translate import OllamaChat
+# from api.gpt_translate import Gpt4oTranslate  
+
+from api.text_postprocess import extract_sensevoice_result_text
+from lib.constant import ModlePath, OPTIONS, SENSEVOCIE_PARMATER, IS_PUNC, PUNC_PARMATER, GEMMA_12B_QAT_CONFIG
   
-os.environ["ARGOS_DEVICE_TYPE"] = "cuda"  # Set ARGOS to use CUDA  
   
 logger = logging.getLogger(__name__)  
   
@@ -20,11 +23,16 @@ class Model:
         """  
         Initialize the Model class with default attributes.  
         """  
+        self.models_path = ModlePath()  
+        self.gemma_translator = Gemma4BTranslate()
+        self.ollama_translator = OllamaChat(GEMMA_12B_QAT_CONFIG)
+        # self.gpt4o_translator = Gpt4oTranslate()  
+        self.google_translator = Translator()  
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"  
+        
         self.model = None  
         self.model_version = None  
-        self.models_path = ModlePath()  
-        self.google_translator = Translator()  
-        self.gpt4o_translator = Gpt4oTranslate()  
+        self.punc_model = None
         self.translate_method = "google"  
   
     def load_model(self, models_name):  
@@ -45,18 +53,23 @@ class Model:
             # Choose model weight  
             if models_name == "large_v2":  
                 self.model = whisper.load_model(self.models_path.large_v2)  
+                self.model.to(self.device)
             elif models_name == "medium":  
                 self.model = whisper.load_model(self.models_path.medium)  
-            elif models_name == "turbo":  
-                self.model = whisper.load_model(self.models_path.turbo)  
-
-            device = "cuda" if torch.cuda.is_available() else "cpu"  
-            self.model.to(device)  
+                self.model.to(self.device)
+            elif models_name == "sensevoice":  
+                self.model = AutoModel(**SENSEVOCIE_PARMATER)
+                if IS_PUNC:
+                    start = time.time()
+                    logger.info(" | Start to loading punch model. | ")
+                    self.punc_model = AutoModel(**PUNC_PARMATER)
+                    end = time.time()
+                    logger.info(f" | Model \'ct-punc\' loaded in {end - start:.2f} seconds. | ")
             end = time.time()  
-            logger.info(f"Model '{models_name}' loaded in {end - start:.2f} seconds.")  
+            logger.info(f" | Model '{models_name}' loaded in {end - start:.2f} seconds. | ")  
         except Exception as e:
             self.model_version = None
-            logger.error(f'load_model() models_name:{models_name} error:{e}')
+            logger.error(f' | load_model() models_name: {models_name} error: {e} | ')
   
     def _release_model(self):  
         """  
@@ -71,7 +84,7 @@ class Model:
             gc.collect()  
             self.model = None
             torch.cuda.empty_cache()  
-            logger.info("Previous model resources have been released.")  
+            logger.info(" | Previous model resources have been released. | ")  
   
     def change_translate_method(self, method_name):  
         """  
@@ -100,12 +113,20 @@ class Model:
         OPTIONS["language"] = ori  
   
         start = time.time()  
-        result = self.model.transcribe(audio_file_path, **OPTIONS)  
-        logger.debug(result)  
-        ori_pred = result['text']  
+        if self.model_version == "sensevoice":
+            result = self.model.generate(audio_file_path, **OPTIONS)
+            ori_pred = result[0]['text']
+            if IS_PUNC:
+                ori_pred = self.punc_model.generate(input=ori_pred)
+                ori_pred = ori_pred[0]['text']
+            ori_pred = extract_sensevoice_result_text(ori_pred.lower())
+        else:
+            result = self.model.transcribe(audio_file_path, **OPTIONS)  
+            logger.debug(result)  
+            ori_pred = result['text']  
         end = time.time()  
         inference_time = end - start  
-        logger.debug(f"Inference time {inference_time} seconds.")  
+        logger.debug(f" | Inference time {inference_time} seconds. | ")  
   
         return ori_pred, inference_time
   
@@ -117,31 +138,22 @@ class Model:
                     ori = 'zh-TW' if ori == 'zh' else ori  
                     tar = 'zh-TW' if tar == 'zh' else tar  
                     translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
-                elif self.translate_method == "argos":  
-                    ori = 'zt' if ori == 'zh' else ori  
-                    tar = 'zt' if tar == 'zh' else tar  
-                    translated_pred = argostranslate.translate.translate(ori_pred, ori, tar)  
-                elif self.translate_method == "gpt-4o":  
-                    try:
-                        translated_pred = self.gpt4o_translator.translate(ori_pred, ori, tar)  
-                    except Exception as e:
-                        logger.error(f'translate() gpt-4o error:{e}')
-                        # change to google translate
-                        ori = 'zh-TW' if ori == 'zh' else ori  
-                        tar = 'zh-TW' if tar == 'zh' else tar  
-                        translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
+                # elif self.translate_method == "gpt-4o": 
+                #     translated_pred = self.gpt4o_translator.translate(ori_pred, ori, tar)  
+                elif self.translate_method == "gemma":  
+                    translated_pred = self.gemma_translator.translate(ori_pred, ori, tar)   
+                elif self.translate_method == "ollama":
+                    translated_pred = self.ollama_translator.chat(sourse_text=ori_pred, sourse_lang=ori, target_lang=tar)  
             else:  
                 translated_pred = ori_pred
         except Exception as e:
-            logger.error(f'translate() error:{e}')
-            translated_pred = ''
+            translated_pred = ori_pred
+            logger.error(f" | translate() '{self.translate_method}' error: {e} | ") 
         end = time.time()  
         g_translate_time = end - start  
         
         return translated_pred, g_translate_time, self.translate_method
         
-        
-
 if __name__ == "__main__":  
     # argos  
     model = Model()  
@@ -150,10 +162,10 @@ if __name__ == "__main__":
     ori = "en"  # Original language  
     tar = "ko"  # Target language  
     ori_pred, translated_pred, inference_time, g_translate_time = model.translate(audio_file_path, ori, tar)  
-    print(f"Original Transcription: {ori_pred}")  
-    print(f"Translated Transcription: {translated_pred}")  
-    print(f"Inference Time: {inference_time} seconds")  
-    print(f"Translation Time: {g_translate_time} seconds")  
+    print(f" | Original Transcription: {ori_pred} | ")  
+    print(f" | Translated Transcription: {translated_pred} | ")  
+    print(f" | Inference Time: {inference_time} seconds | ")  
+    print(f" | Translation Time: {g_translate_time} seconds | ")  
 
 
 # if __name__ == "__main__":  

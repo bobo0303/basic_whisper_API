@@ -1,27 +1,29 @@
-torch
 typing-extensions>=4.11,<5  
 requests==2.32.2
 python-multipart
-httpx
+httpx[http2]
 tqdm>=4.62.1
 numpy==1.23.1  
 uvicorn>=0.21.1  
-fastapi>=0.95.1  
+# fastapi>=0.95.1  
+fastapi[all]
 starlette>=0.26.1  
-# whisper (https://github.com/openai/whisper)
-openai_whisper-20240930-py3-none-any.whl  
+/tmp/openai_whisper-20240930-py3-none-any.whl  
 numba
-# numpy
-# tqdm
 more-itertools
 tiktoken
 
 # g_translate
-googletrans-4.0.0rc1-py3-none-any.whl   # 自己包的一定要這個不然會版本衝突
+/tmp/googletrans-4.0.0rc1-py3-none-any.whl   # 自己包的一定要這個不然會版本衝突
 
-# Argos Translate
-argostranslate
-h2==4.1.0
+# funASR
+modelscope==1.18.0
+funasr==1.1.6
+huggingface_hub>=0.26.0
 
-# GPT-4o
-openai==1.57.4
+# Gemma (request python >= 3.9.0)
+transformers==4.50.1
+accelerate
+
+# ollama
+ollama
