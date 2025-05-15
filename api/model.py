@@ -7,10 +7,11 @@ import logging
 
 from googletrans import Translator  
 from funasr import AutoModel  
+from queue import Queue  
 
 from api.gemma_translate import Gemma4BTranslate  
 from api.ollama_translate import OllamaChat
-# from api.gpt_translate import Gpt4oTranslate  
+from api.gpt_translate import Gpt4oTranslate  
 
 from api.text_postprocess import extract_sensevoice_result_text
 from lib.constant import ModlePath, OPTIONS, SENSEVOCIE_PARMATER, IS_PUNC, PUNC_PARMATER, GEMMA_12B_QAT_CONFIG
@@ -26,7 +27,7 @@ class Model:
         self.models_path = ModlePath()  
         self.gemma_translator = Gemma4BTranslate()
         self.ollama_translator = OllamaChat(GEMMA_12B_QAT_CONFIG)
-        # self.gpt4o_translator = Gpt4oTranslate()  
+        self.gpt4o_translator = Gpt4oTranslate()  
         self.google_translator = Translator()  
         self.device = "cuda" if torch.cuda.is_available() else "cpu"  
         
@@ -34,7 +35,10 @@ class Model:
         self.model_version = None  
         self.punc_model = None
         self.translate_method = "google"  
-  
+        
+        self.processing = None
+        self.result_queue = Queue()
+        
     def load_model(self, models_name):  
         """  
         Load the specified model based on the model's name.  
@@ -138,8 +142,18 @@ class Model:
                     ori = 'zh-TW' if ori == 'zh' else ori  
                     tar = 'zh-TW' if tar == 'zh' else tar  
                     translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
-                # elif self.translate_method == "gpt-4o": 
-                #     translated_pred = self.gpt4o_translator.translate(ori_pred, ori, tar)  
+                elif self.translate_method == "gpt-4o": 
+                    try:
+                        translated_pred = self.gpt4o_translator.translate(ori_pred, ori, tar)  
+                        if "403_Forbidden" in translated_pred:
+                            ori = 'zh-TW' if ori == 'zh' else ori  
+                            tar = 'zh-TW' if tar == 'zh' else tar  
+                            translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
+                    except Exception as e:
+                        logger.error(f" | gpt-4o translate error: {e} | use google translate to retry | ")
+                        ori = 'zh-TW' if ori == 'zh' else ori  
+                        tar = 'zh-TW' if tar == 'zh' else tar  
+                        translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
                 elif self.translate_method == "gemma":  
                     translated_pred = self.gemma_translator.translate(ori_pred, ori, tar)   
                 elif self.translate_method == "ollama":

@@ -2,8 +2,9 @@ FROM pytorch/pytorch:2.1.1-cuda12.1-cudnn8-devel
   
 ARG DEBIAN_FRONTEND=noninteractive  
 ARG TARGETARCH  
-  
-WORKDIR /mnt  
+
+WORKDIR /app
+COPY ./ /app
   
 RUN apt-get update && apt-get install -y --no-install-recommends \  
     libgl1 libglib2.0-0 vim ffmpeg zip unzip htop screen tree build-essential gcc g++ make unixodbc-dev curl python3-dev python3-distutils git wget libvulkan1 libfreeimage-dev \  
@@ -36,6 +37,4 @@ RUN rm /tmp/googletrans-4.0.0rc1-py3-none-any.whl
 RUN rm /tmp/requirements.txt  
 
 # 進去後記得先 huggingface-cli login 
-ARG HUGGINGFACE_HUB_TOKEN  
-ENV HUGGINGFACE_HUB_TOKEN=${HUGGINGFACE_HUB_TOKEN}  
-RUN echo "$HUGGINGFACE_HUB_TOKEN" | huggingface-cli login --token  
+

@@ -81,7 +81,7 @@ class OllamaChat:
             
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": USER_PRMOPT_TITLE[target_lang]+sourse_text},
+                {"role": "user", "content": sourse_text},
             ]
             try:
                 response = self.client.chat(

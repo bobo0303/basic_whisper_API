@@ -1,16 +1,17 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Depends  
+from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Request, Depends  
+from fastapi.responses import StreamingResponse  
 import os  
 import time  
 import pytz  
+import asyncio  
 import logging  
 import uvicorn  
 import datetime  
-import requests  
 import threading 
 from queue import Queue  
 from threading import Thread, Event  
 from api.model import Model  
-from api.threading_api import translate_and_print, waiting_times, stop_thread
+from api.threading_api import translate_and_print, ws_translate_and_print, waiting_times, stop_thread
 from lib.data_object import LoadModelRequest, LoadMethodRequest  
 from lib.base_object import BaseResponse  
 from lib.constant import ResponseSTT, TranscriptionData, VSTTranscriptionData, VSTResponseSTT, TextData, WAITING_TIME, LANGUAGE_LIST, ASR_METHODS, TRANSLATE_METHODS  
@@ -55,6 +56,7 @@ local_now = utc_now.astimezone(tz)
 app = FastAPI()  
 model = Model()  
 queue = Queue()  
+waiting_list = []
   
 @app.get("/")  
 def HelloWorld(name:str=None):  
@@ -197,7 +199,7 @@ async def rtt_translate(
         ori_text="",  
         trans_lang=t_lang,  
         trans_text="",  
-        times=times,  
+        times=str(times),  
         audio_uid=transcription_request.audio_uid, 
         transcribe_time=0.0,
         translate_time=0.0, 
@@ -207,6 +209,7 @@ async def rtt_translate(
     audio_buffer = f"audio/{file_name}"  
     with open(audio_buffer, 'wb') as f:  
         f.write(file.file.read())  
+        
     if not os.path.exists(audio_buffer):  
         return BaseResponse(status="FAILED", message=" | The audio file does not exist, please check the audio path. | ", data=response_data)  
     
@@ -224,8 +227,8 @@ async def rtt_translate(
         stop_event = threading.Event()  
 
         # Create timing thread and inference thread
-        time_thread = threading.Thread(target=waiting_times, args=(stop_event, WAITING_TIME))  
-        inference_thread = threading.Thread(target=translate_and_print, args=(model, audio_buffer, o_lang, t_lang, result_queue, stop_event))
+        time_thread = threading.Thread(target=waiting_times, args=(stop_event, model,WAITING_TIME))  
+        inference_thread = threading.Thread(target=translate_and_print, args=(model, audio_buffer, result_queue, o_lang, t_lang, stop_event))
 
         # Start the threads
         time_thread.start()
@@ -259,107 +262,211 @@ async def rtt_translate(
         logger.error(f'iference() error:{e}')
         return BaseResponse(status="FAILED", message=f" | iference() error:{e} | ", data=response_data)  
     
-# @app.websocket("/ws/rtt_translate")  
-# async def websocket_endpoint(websocket: WebSocket):  
-#     await websocket.accept()  
-#     """
-#     Transcribe and translate an audio file.  
+@app.websocket("/ws/rtt_translate")  
+async def websocket_endpoint(websocket: WebSocket):  
+    await websocket.accept()  
+    waiting_list = []  
   
-#     This endpoint receives an audio file and its associated metadata, and  
-#     performs transcription and translation on the audio file.  
+    while not model.result_queue.empty():  
+        model.result_queue.get()  
   
-#     :param file: UploadFile  
-#         The audio file to be transcribed.  
-#     :param meeting_id: str  
-#         The ID of the meeting.  
-#     :param device_id: str  
-#         The ID of the device.  
-#     :param audio_uid: str  
-#         The unique ID of the audio.  
-#     :param time: str  
-#         The start time of the audio.  
-#     :param o_lang: str  
-#         The original language of the audio.  
-#     :param t_lang: str  
-#         The target language for translation.  
-#     :rtype: BaseResponse  
-#         A response containing the transcription results.  
-#     """
-    
-#     if model.model_version is None:
-#         return BaseResponse(status="FAILED", message=" | model haven't been load successfull. may out of memory please check again | ", data=response_data)  
-      
-#     if o_lang not in LANGUAGE_LIST or t_lang not in LANGUAGE_LIST:  
-#         logger.info(f" | One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}. | ")  
-#         return BaseResponse(status="FAILED", message=f" | One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}. | ", data=response_data) 
-    
-#     # Extract data from transcription_request  
-#     times = str(transcription_request.times)
-#     o_lang = transcription_request.o_lang.lower()
-#     t_lang = transcription_request.t_lang.lower()
-
-#     response_data = ResponseSTT(  
-#         meeting_id=transcription_request.meeting_id,  
-#         device_id=transcription_request.device_id,  
-#         ori_lang=o_lang,  
-#         ori_text="",  
-#         trans_lang=t_lang,  
-#         trans_text="",  
-#         times=times,  
-#         audio_uid=transcription_request.audio_uid, 
-#         transcribe_time=0.0,
-#         translate_time=0.0, 
-#     )  
-    
-#     file_name = times + ".wav"  
-#     audio_buffer = f"audio/{file_name}"  
-#     with open(audio_buffer, 'wb') as f:  
-#         f.write(file.file.read())  
-#     if not os.path.exists(audio_buffer):  
-#         return BaseResponse(status="FAILED", message=" | The audio file does not exist, please check the audio path. | ", data=response_data)  
- 
-    
-#     try:
-#         # Create a queue to hold the return value
-#         result_queue = Queue()
-#         # Create an event to signal stopping  
-#         stop_event = threading.Event()  
-
-#         # Create timing thread and inference thread
-#         time_thread = threading.Thread(target=waiting_times, args=(stop_event, WAITING_TIME))  
-#         inference_thread = threading.Thread(target=translate_and_print, args=(model, audio_buffer, o_lang, t_lang, result_queue, stop_event))
-
-#         # Start the threads
-#         time_thread.start()
-#         inference_thread.start()
-
-#         # Wait for timing thread to complete check if the inference thread is active to close
-#         time_thread.join()
-#         stop_thread(inference_thread) 
-
-#         os.remove(audio_buffer)  
-
-#         # Get the result from the queue  
-#         if not result_queue.empty():  
-#             o_result, t_result, inference_time, g_translate_time, translate_method = result_queue.get() 
-#             response_data.ori_text = o_result
-#             response_data.trans_text = t_result
-#             response_data.transcribe_time = inference_time
-#             response_data.translate_time = g_translate_time
-#             logger.debug(response_data.model_dump_json())  
-#             logger.info(f" | device_id: {response_data.device_id} | audio_uid: {response_data.audio_uid} | language: {o_lang} -> {t_lang} | translate_method: {translate_method} |")  
-#             logger.info(f" | transcription: {response_data.ori_text} |")  
-#             logger.info(f" | translation: {response_data.trans_text} |")  
-#             logger.info(f" | inference has been completed in {inference_time:.2f} seconds. | translate has been completed in {g_translate_time:.2f} seconds.")  
-#             state="OK"
-#         else:
-#             logger.info(f" | Inference has exceeded the upper limit time and has been stopped |")  
-#             state="FAILED"
-
-#         return BaseResponse(status=state, message=f" | transcription: {response_data.ori_text} | translation: {response_data.trans_text} | ", data=response_data)  
-#     except Exception as e:
-#         logger.error(f'iference() error:{e}')
-#         return BaseResponse(status="FAILED", message=f" | iference() error:{e} | ", data=response_data)  
+    async def process_audio():  
+        while True:  
+            if waiting_list and not model.processing:  
+                response_data = waiting_list[0].model_copy()  
+                waiting_list.pop(0)  
+                audio_buffer = f"audio/{response_data.times}.wav"  
+                o_lang = response_data.ori_lang  
+                t_lang = response_data.trans_lang  
+                  
+                try:  
+                    stop_event = threading.Event()  
+                    time_thread = threading.Thread(target=waiting_times, args=(stop_event, model, WAITING_TIME))  
+                    inference_thread = threading.Thread(target=ws_translate_and_print, args=(model, audio_buffer, o_lang, t_lang, stop_event))  
+                      
+                    time_thread.start()  
+                    inference_thread.start()  
+                      
+                    time_thread.join()  
+                    stop_thread(inference_thread)  
+                    os.remove(audio_buffer)  
+                      
+                    while not model.result_queue.empty():  
+                        o_result, t_result, inference_time, g_translate_time, translate_method = model.result_queue.get()  
+                        response_data.ori_text = o_result  
+                        response_data.trans_text = t_result  
+                        response_data.transcribe_time = inference_time  
+                        response_data.translate_time = g_translate_time  
+                          
+                        logger.debug(response_data.model_dump_json())  
+                        logger.info(f" | device_id: {response_data.device_id} | audio_uid: {response_data.audio_uid} | language: {response_data.ori_lang} -> {response_data.trans_lang} | translate_method: {translate_method} | ")  
+                        logger.info(f" | transcription: {response_data.ori_text} | ")  
+                        logger.info(f" | translation: {response_data.trans_text} | ")  
+                        logger.info(f" | Inference completed in {inference_time:.2f} seconds. Translation completed in {g_translate_time:.2f} seconds. | ")  
+                        await websocket.send_json(BaseResponse(status="OK", message=f" | transcription: {response_data.ori_text} | translation: {response_data.trans_text} | ", data=response_data).model_dump())  
+                except Exception as e:  
+                    logger.error(f' | inference() error: {e} | ')  
+            await asyncio.sleep(0.1) 
+  
+    asyncio.create_task(process_audio())  
+  
+    try:  
+        while True:  
+            data = await websocket.receive_json()  
+            transcription_request = TranscriptionData(**data)  
+            audio_bytes = await websocket.receive_bytes()  
+  
+            response_data = ResponseSTT(  
+                meeting_id=transcription_request.meeting_id,  
+                device_id=transcription_request.device_id,  
+                ori_lang=transcription_request.o_lang.lower(),  
+                ori_text="",  
+                trans_lang=transcription_request.t_lang.lower(),  
+                trans_text="",  
+                times=str(transcription_request.times),  
+                audio_uid=transcription_request.audio_uid,  
+                transcribe_time=0.0,  
+                translate_time=0.0,  
+            )  
+  
+            previous_waiting_list = waiting_list.copy()  
+            audio_uid_exist = False  
+            for item in previous_waiting_list:  
+                if item.audio_uid == response_data.audio_uid:  
+                    audio_uid_exist = True  
+                    if item.times < response_data.times:  
+                        waiting_list.remove(item)  
+                        waiting_list.append(response_data)  
+                        audio = f"audio/{item.times}.wav"  
+                        if os.path.exists(audio):  
+                            os.remove(audio)  
+                    break  
+                
+            if not audio_uid_exist:  
+                waiting_list.append(response_data)  
+  
+            if previous_waiting_list != waiting_list:  
+                file_name = f"{response_data.times}.wav"  
+                audio_buffer = f"audio/{file_name}"  
+                with open(audio_buffer, 'wb') as f:  
+                    f.write(audio_bytes)  
+                    
+    except WebSocketDisconnect:  
+        logger.info(" | Client disconnected | ")  
+        
+@app.post("/sse_rtt_translate")  
+async def sse_rtt_translate(  
+        file: UploadFile = File(...),  
+        transcription_request: TranscriptionData = Depends()  
+):  
+    """  
+    Transcribe and translate an audio file.  
+    This endpoint receives an audio file and its associated metadata, and  
+    performs transcription and translation on the audio file.  
+  
+    :param file: UploadFile  
+        The audio file to be transcribed.  
+    :param meeting_id: str  
+        The ID of the meeting.  
+    :param device_id: str  
+        The ID of the device.  
+    :param audio_uid: str  
+        The unique ID of the audio.  
+    :param time: str  
+        The start time of the audio.  
+    :param o_lang: str  
+        The original language of the audio.  
+    :param t_lang: str  
+        The target language for translation.  
+    :rtype: BaseResponse  
+        A response containing the transcription results.  
+    """  
+    # Extract data from transcription_request  
+    times = str(transcription_request.times)  
+    o_lang = transcription_request.o_lang.lower()  
+    t_lang = transcription_request.t_lang.lower()  
+  
+    response_data = ResponseSTT(  
+        meeting_id=transcription_request.meeting_id,  
+        device_id=transcription_request.device_id,  
+        ori_lang=o_lang,  
+        ori_text="",  
+        trans_lang=t_lang,  
+        trans_text="",  
+        times=str(times),  
+        audio_uid=transcription_request.audio_uid,  
+        transcribe_time=0.0,  
+        translate_time=0.0,  
+    )  
+  
+    file_name = times + ".wav"  
+    audio_buffer = f"audio/{file_name}"  
+    with open(audio_buffer, 'wb') as f:  
+        f.write(file.file.read())  
+  
+    if not os.path.exists(audio_buffer):  
+        return BaseResponse(status="FAILED", message=" | The audio file does not exist, please check the audio path. | ", data=response_data)  
+  
+    if model.model_version is None:  
+        return BaseResponse(status="FAILED", message=" | model haven't been load successfull. may out of memory please check again | ", data=response_data)  
+  
+    if o_lang not in LANGUAGE_LIST or t_lang not in LANGUAGE_LIST:  
+        logger.info(f" | One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}. | ")  
+        return BaseResponse(status="FAILED", message=f" | One or both languages are not in LANGUAGE_LIST: {LANGUAGE_LIST}. | ", data=response_data)  
+  
+    try:  
+        # Add the transcription request to the waiting list  
+        waiting_list.append(response_data)  
+        return BaseResponse(status="OK", message=" | Request added to the waiting list. | ", data=None)  
+    except Exception as e:  
+        logger.error(f' | inference() error:{e} | ')  
+        return BaseResponse(status="FAILED", message=f" | iference() error:{e} | ", data=response_data)  
+  
+@app.get("/sse_rtt_translate")  
+async def sse_rtt_translate():  
+    """  
+    Server-Sent Events endpoint to handle real-time translation.  
+    This endpoint checks the waiting list and processes the translation if the model is not busy.  
+    """  
+    async def event_stream():  
+        while True:  
+            if waiting_list and not model.processing:  
+                response_data = waiting_list.pop(0)  
+                audio_buffer = f"audio/{response_data.times}.wav"  
+                o_lang = response_data.ori_lang  
+                t_lang = response_data.trans_lang  
+  
+                try:  
+                    stop_event = threading.Event()  
+                    time_thread = threading.Thread(target=waiting_times, args=(stop_event, model, WAITING_TIME))  
+                    inference_thread = threading.Thread(target=translate_and_print, args=(model, audio_buffer, o_lang, t_lang, stop_event))  
+  
+                    time_thread.start()  
+                    inference_thread.start()  
+  
+                    time_thread.join()  
+                    stop_thread(inference_thread)  
+                    os.remove(audio_buffer)  
+  
+                    while not model.result_queue.empty():  
+                        o_result, t_result, inference_time, g_translate_time, translate_method = model.result_queue.get()  
+                        response_data.ori_text = o_result  
+                        response_data.trans_text = t_result  
+                        response_data.transcribe_time = inference_time  
+                        response_data.translate_time = g_translate_time  
+  
+                        logger.debug(response_data.model_dump_json())  
+                        logger.info(f" | device_id: {response_data.device_id} | audio_uid: {response_data.audio_uid} | language: {response_data.ori_lang} -> {response_data.trans_lang} | translate_method: {translate_method} | ")  
+                        logger.info(f" | transcription: {response_data.ori_text} | ")  
+                        logger.info(f" | translation: {response_data.trans_text} | ")  
+                        logger.info(f" | Inference completed in {inference_time:.2f} seconds. Translation completed in {g_translate_time:.2f} seconds. | ")  
+  
+                        yield f"data: {response_data.model_dump_json()}\n\n"  
+                except Exception as e:  
+                    logger.error(f' | inference() error: {e} | ')  
+            await asyncio.sleep(0.1)  
+  
+    return StreamingResponse(event_stream(), media_type="text/event-stream") 
 
 @app.post("/vst_translate")  
 async def vst_translate(  
@@ -400,6 +507,7 @@ async def vst_translate(
     audio_buffer = f"audio/{file_name}"  
     with open(audio_buffer, 'wb') as f:  
         f.write(file.file.read())  
+        
     if not os.path.exists(audio_buffer):  
         return BaseResponse(status="FAILED", message=" | The audio file does not exist, please check the audio path. | ", data=response_data)  
 

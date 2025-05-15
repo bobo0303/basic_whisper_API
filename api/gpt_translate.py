@@ -46,7 +46,7 @@ class Gpt4oTranslate:
                 { "role": "user", "content": [  
                     { 
                         "type": "text", 
-                        "text": USER_PRMOPT_TITLE[target_lang]+sourse_text
+                        "text": sourse_text
                     }
                 ] } 
             ],

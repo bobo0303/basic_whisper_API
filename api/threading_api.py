@@ -1,14 +1,28 @@
+import os
+
 import logging  
 import threading
 import ctypes
+import asyncio  
+from queue import Queue  
+from lib.constant import WAITING_TIME
+from lib.base_object import BaseResponse  
 
 
 logger = logging.getLogger(__name__)  
 
-def translate_and_print(model, audio_file_path, ori, tar, result_queue, stop_event):  
+def translate_and_print(model, audio_file_path, result_queue, ori, tar, stop_event):  
     ori_pred, inference_time = model.transcribe(audio_file_path, ori)  
     translated_pred, g_translate_time, translate_method = model.translate(ori_pred, ori, tar)  
     result_queue.put((ori_pred, translated_pred, inference_time, g_translate_time, translate_method))  
+    stop_event.set()  # Signal to stop the waiting thread  
+    
+def ws_translate_and_print(model, audio_file_path, ori, tar, stop_event):  
+    model.processing = True
+    ori_pred, inference_time = model.transcribe(audio_file_path, ori)  
+    translated_pred, g_translate_time, translate_method = model.translate(ori_pred, ori, tar)  
+    model.result_queue.put((ori_pred, translated_pred, inference_time, g_translate_time, translate_method))  
+    model.processing = False
     stop_event.set()  # Signal to stop the waiting thread  
 
 def get_thread_id(thread):  
@@ -32,5 +46,7 @@ def stop_thread(thread):
             logger.debug(" | PyThreadState_SetAsyncExc failed | ")
             raise SystemError(" | PyThreadState_SetAsyncExc failed | ")  
 
-def waiting_times(stop_event, times):  
+def waiting_times(stop_event, model, times):  
     stop_event.wait(times)  # Wait for the event or timeout  
+    model.processing = False
+    

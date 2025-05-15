@@ -27,3 +27,9 @@ accelerate
 
 # ollama
 ollama
+
+# GPT-4o
+openai
+
+# sse
+sseclient

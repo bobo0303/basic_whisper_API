@@ -46,7 +46,7 @@ class Gemma4BTranslate:
                 },
                 { 
                     "role": "user", 
-                    "content": [{ "type": "text", "text": USER_PRMOPT_TITLE[target_lang]+sourse_text}
+                    "content": [{ "type": "text", "text": sourse_text}
                         ] 
                     } 
                 ]
