@@ -9,7 +9,7 @@ from googletrans import Translator
 from funasr import AutoModel  
 from queue import Queue  
 
-from api.gemma_translate import Gemma4BTranslate  
+# from api.gemma_translate import Gemma4BTranslate  
 from api.ollama_translate import OllamaChat
 from api.gpt_translate import Gpt4oTranslate  
 
@@ -25,7 +25,7 @@ class Model:
         Initialize the Model class with default attributes.  
         """  
         self.models_path = ModlePath()  
-        self.gemma_translator = Gemma4BTranslate()
+        # self.gemma_translator = Gemma4BTranslate()
         self.ollama_translator = OllamaChat(GEMMA_12B_QAT_CONFIG)
         self.gpt4o_translator = Gpt4oTranslate()  
         self.google_translator = Translator()  
@@ -102,71 +102,103 @@ class Model:
   
     def transcribe(self, audio_file_path, ori):  
         """  
-        Perform transcription and translation on the given audio file.  
-  
+        Perform transcription on the given audio file.  
+    
         :param audio_file_path: str  
             The path to the audio file to be transcribed.  
         :param ori: str  
             The original language of the audio.  
-        :param tar: str  
-            The target language for translation.  
         :rtype: tuple  
-            A tuple containing the original transcription, translated transcription, inference time, translation time, and the translation method used.  
+            A tuple containing the original transcription and inference time.  
         :logs: Inference status and time.  
         """  
-        OPTIONS["language"] = ori  
-  
-        start = time.time()  
-        if self.model_version == "sensevoice":
-            result = self.model.generate(audio_file_path, **OPTIONS)
-            ori_pred = result[0]['text']
-            if IS_PUNC:
-                ori_pred = self.punc_model.generate(input=ori_pred)
-                ori_pred = ori_pred[0]['text']
-            ori_pred = extract_sensevoice_result_text(ori_pred.lower())
-        else:
+        OPTIONS["language"] = ori  # Set the language option for transcription  
+    
+        start = time.time()  # Start timing the transcription process  
+    
+        if self.model_version == "sensevoice":  
+            # Perform transcription using the SenseVoice model  
+            result = self.model.generate(audio_file_path, **OPTIONS)  
+            ori_pred = result[0]['text']  
+            
+            if IS_PUNC:  
+                # Add punctuation to the transcription if IS_PUNC is enabled  
+                ori_pred = self.punc_model.generate(input=ori_pred)  
+                ori_pred = ori_pred[0]['text']  
+            
+            ori_pred = extract_sensevoice_result_text(ori_pred.lower())  # Extract and clean the transcription text  
+        else:  
+            # Perform transcription using a different model  
             result = self.model.transcribe(audio_file_path, **OPTIONS)  
-            logger.debug(result)  
+            logger.debug(result)  # Log the transcription result  
             ori_pred = result['text']  
-        end = time.time()  
-        inference_time = end - start  
-        logger.debug(f" | Inference time {inference_time} seconds. | ")  
+    
+        end = time.time()  # End timing the transcription process  
+        inference_time = end - start  # Calculate the time taken for transcription  
+    
+        logger.debug(f" | Inference time {inference_time} seconds. | ")  # Log the inference time  
+    
+        return ori_pred, inference_time  # Return the transcription and inference time  
   
-        return ori_pred, inference_time
-  
-    def translate(self, ori_pred, ori, tar):
+    def translate(self, ori_pred, ori, tar):  
+        """  
+        Translate the given text from the original language to the target language.  
+    
+        :param ori_pred: str  
+            The original text to be translated.  
+        :param ori: str  
+            The original language of the text.  
+        :param tar: str  
+            The target language for translation.  
+        :return: tuple  
+            A tuple containing the translated text, the translation time, and the translation method used.  
+        """  
         start = time.time()  
-        try:
-            if ori != tar and ori_pred != '':
+        ori_pred = ori_pred if ori_pred != "." else ""  # Ensure the original prediction is not just a period  
+    
+        try:  
+            if ori != tar and ori_pred != '':  # Proceed with translation only if languages are different and text is not empty  
                 if self.translate_method == "google":  
+                    # Adjust language codes for Google Translate  
                     ori = 'zh-TW' if ori == 'zh' else ori  
                     tar = 'zh-TW' if tar == 'zh' else tar  
                     translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
-                elif self.translate_method == "gpt-4o": 
-                    try:
+                
+                elif self.translate_method == "gpt-4o":  
+                    try:  
                         translated_pred = self.gpt4o_translator.translate(ori_pred, ori, tar)  
-                        if "403_Forbidden" in translated_pred:
+                        if "403_Forbidden" in translated_pred:  
+                            logger.error(f" | gpt-4o reject translate | use google translate to retry | ")  
+                            # Retry translation using Google Translate if GPT-4o translation is forbidden  
                             ori = 'zh-TW' if ori == 'zh' else ori  
                             tar = 'zh-TW' if tar == 'zh' else tar  
                             translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
-                    except Exception as e:
-                        logger.error(f" | gpt-4o translate error: {e} | use google translate to retry | ")
+                    except Exception as e:  
+                        logger.error(f" | gpt-4o translate error: {e} | use google translate to retry | ")  
+                        # Retry translation using Google Translate if an error occurs with GPT-4o  
                         ori = 'zh-TW' if ori == 'zh' else ori  
                         tar = 'zh-TW' if tar == 'zh' else tar  
                         translated_pred = self.google_translator.translate(ori_pred, src=ori, dest=tar).text  
-                elif self.translate_method == "gemma":  
-                    translated_pred = self.gemma_translator.translate(ori_pred, ori, tar)   
-                elif self.translate_method == "ollama":
-                    translated_pred = self.ollama_translator.chat(sourse_text=ori_pred, sourse_lang=ori, target_lang=tar)  
+                
+                # elif self.translate_method == "gemma":  
+                #     translated_pred = self.gemma_translator.translate(ori_pred, ori, tar)  
+                
+                elif self.translate_method == "ollama":  
+                    translated_pred = self.ollama_translator.chat(source_text=ori_pred, source_lang=ori, target_lang=tar)  
+                
+                else:  
+                    translated_pred = ori_pred  # No translation needed if the method is not recognized  
             else:  
-                translated_pred = ori_pred
-        except Exception as e:
-            translated_pred = ori_pred
-            logger.error(f" | translate() '{self.translate_method}' error: {e} | ") 
-        end = time.time()  
-        g_translate_time = end - start  
+                translated_pred = ori_pred  # No translation needed if languages are the same or text is empty  
         
-        return translated_pred, g_translate_time, self.translate_method
+        except Exception as e:  
+            translated_pred = ori_pred  # Fallback to original text in case of an error  
+            logger.error(f" | translate() '{self.translate_method}' error: {e} | ")  
+    
+        end = time.time()  
+        g_translate_time = end - start  # Calculate the time taken for translation  
+    
+        return translated_pred, g_translate_time, self.translate_method  
         
 if __name__ == "__main__":  
     # argos  
@@ -182,70 +214,4 @@ if __name__ == "__main__":
     print(f" | Translation Time: {g_translate_time} seconds | ")  
 
 
-# if __name__ == "__main__":  
-#     import threading  
-#     import ctypes  
-#     import time  
-    
-#     def translate_and_print(model, audio_file_path, ori, tar):  
-#         print("thread 2 start")
-#         ori_pred, translated_pred, inference_time, g_translate_time, translate_method = model.translate(audio_file_path, ori, tar)  
-#         print(f"2Original Transcription: {ori_pred}")  
-#         print(f"2Translated Transcription: {translated_pred}")  
-#         print(f"2Inference Time: {inference_time} seconds")  
-#         print(f"2Translation Time: {g_translate_time} seconds") 
-#         print("thread 2 end")
-
-#         return ori_pred, translated_pred, inference_time, g_translate_time, translate_method  
-        
-
-#     def get_thread_id(thread):  
-#         if not thread.is_alive():  
-#             raise threading.ThreadError("The thread is not active")  
-#         for tid, tobj in threading._active.items():  
-#             if tobj is thread:  
-#                 return tid  
-#         raise AssertionError("Could not determine the thread ID")  
-    
-#     def stop_thread(thread):  
-#         thread_id = get_thread_id(thread)  
-#         res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread_id), ctypes.py_object(SystemExit))  
-#         if res == 0:  
-#             raise ValueError("Invalid thread ID")  
-#         elif res != 1:  
-#             ctypes.pythonapi.PyThreadState_SetAsyncExc(thread_id, 0)  
-#             raise SystemError("PyThreadState_SetAsyncExc failed")  
-        
-#     model = Model()  
-#     model.load_model("medium")  # Load the specified model by name  
-  
-#     audio_file_path_1 = "/mnt/audio/123.wav"  # Replace with the actual audio file path  
-#     audio_file_path_2 = "/mnt/audio/test.wav"  # Replace with the actual audio file path  
-#     ori = "en"  # Original language  
-#     tar = "ko"  # Target language  
-  
-#     def times():  
-#         print("Thread 1 is running")  
-#         time.sleep(0.5)  # Simulate some work in thread 1  
-#         print("Thread 1 is done")  
-  
-#     # Create two threads  
-#     thread1 = threading.Thread(target=times)  
-#     thread2 = threading.Thread(target=translate_and_print, args=(model, audio_file_path_2, ori, tar))  
-  
-#     # Start the threads  
-#     thread1.start()  
-#     thread2.start()  
-  
-#     # Wait for thread 1 to complete  
-#     thread1.join()  
-      
-#     # Forcefully stop thread 2  
-#     stop_thread(thread2) 
-
-#     ori_pred, translated_pred, inference_time, g_translate_time, _ = model.translate(audio_file_path_1, ori, tar)  
-#     print(f"Original Transcription: {ori_pred}")  
-#     print(f"Translated Transcription: {translated_pred}")  
-#     print(f"Inference Time: {inference_time} seconds")  
-#     print(f"Translation Time: {g_translate_time} seconds") 
 

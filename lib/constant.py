@@ -40,11 +40,21 @@ IS_PUNC = True
 
 #############################################################################
 
+# Request body model for loading a model
+class LoadModelRequest(BaseModel):
+    models_name: str
+    
+# Request for loading new translate method
+class LoadMethodRequest(BaseModel):
+    method_name: str
+
+#############################################################################
+
 class TranscriptionData(BaseModel):
-    meeting_id: str = "test"
-    device_id: str = "test"
-    audio_uid: str = "test"
-    times: datetime = "2025-11-11 11:11:11"
+    meeting_id: str
+    device_id: str
+    audio_uid: str
+    times: datetime
     o_lang: str
     t_lang: str
     
@@ -99,7 +109,7 @@ LANGUAGE_LIST = ['zh', 'en', 'ja', 'ko', "de", "es"]
 
 # google or argos or gpt-4o
 ASR_METHODS = ['medium', 'large_v2', 'sensevoice']
-TRANSLATE_METHODS = ['google', 'gemma', 'ollama', 'gpt-4o']
+TRANSLATE_METHODS = ['google', 'ollama', 'gpt-4o']
 
 #############################################################################
 

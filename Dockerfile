@@ -3,6 +3,9 @@ FROM pytorch/pytorch:2.1.1-cuda12.1-cudnn8-devel
 ARG DEBIAN_FRONTEND=noninteractive  
 ARG TARGETARCH  
 
+# WORKDIR /mnt
+
+# demo or official version to use /app
 WORKDIR /app
 COPY ./ /app
   
@@ -37,4 +40,3 @@ RUN rm /tmp/googletrans-4.0.0rc1-py3-none-any.whl
 RUN rm /tmp/requirements.txt  
 
 # 進去後記得先 huggingface-cli login 
-
