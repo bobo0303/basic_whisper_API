@@ -26,14 +26,14 @@ class Gpt4oTranslate:
                             azure_deployment=self.config['AZURE_DEPLOYMENT']
                             )
         
-    def translate(self, sourse_text, sourse_lang, target_lang):
-        if {sourse_lang, target_lang}.issubset(LANGUAGE_LIST):  
+    def translate(self, source_text, source_lang, target_lang):
+        if {source_lang, target_lang}.issubset(LANGUAGE_LIST):  
             system_prompt = SYSTEM_PRMOPT[target_lang]
             try:
-                system_prompt = system_prompt.replace("source_language", SOURCE_LANGUAGE[LANGUAGE_LIST.index(sourse_lang)][LANGUAGE_LIST.index(target_lang)])  
-                system_prompt = system_prompt.replace("sample_1", SAMPLE_1[sourse_lang])  
-                system_prompt = system_prompt.replace("sample_2", SAMPLE_2[sourse_lang])  
-                system_prompt = system_prompt.replace("sample_3", SAMPLE_3[sourse_lang])  
+                system_prompt = system_prompt.replace("source_language", SOURCE_LANGUAGE[LANGUAGE_LIST.index(source_lang)][LANGUAGE_LIST.index(target_lang)])  
+                system_prompt = system_prompt.replace("sample_1", SAMPLE_1[source_lang])  
+                system_prompt = system_prompt.replace("sample_2", SAMPLE_2[source_lang])  
+                system_prompt = system_prompt.replace("sample_3", SAMPLE_3[source_lang])  
             except Exception as e:
                 logger.error(f"Error: {e}")
             logger.debug(f"system prompt: {system_prompt}")
@@ -46,7 +46,7 @@ class Gpt4oTranslate:
                 { "role": "user", "content": [  
                     { 
                         "type": "text", 
-                        "text": sourse_text
+                        "text": source_text
                     }
                 ] } 
             ],

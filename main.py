@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Form, Depends
 from fastapi.responses import StreamingResponse  
 import os  
 import time  
@@ -56,6 +56,9 @@ app = FastAPI()
 model = Model()  
 queue = Queue()  
 waiting_list = []
+
+# Global event to control SSE connection  
+sse_stop_event = Event()  
   
 @app.get("/")  
 def HelloWorld(name:str=None):  
@@ -173,7 +176,7 @@ async def load_model(request: LoadModelRequest):
 @app.post("/rtt_translate", description="**[DEPRECATED]** This endpoint is deprecated and will be removed in the future. Please use `/rtt_translate/v2` instead.")  
 async def rtt_translate(  
     file: UploadFile = File(...),  
-    transcription_request: TranscriptionData = Form()  
+    transcription_request: TranscriptionData = Depends()  
 ):  
     """  
     Transcribe and translate an audio file.  
@@ -256,7 +259,7 @@ async def rtt_translate(
         time_thread.join()  
         stop_thread(inference_thread)  
   
-        # Remove the audio buffer file  
+        # Remove the audio buffer file
         os.remove(audio_buffer)  
   
         # Get the result from the queue  
@@ -523,7 +526,7 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.post("/sse_rtt_translate", description="**[DEPRECATED]** This endpoint is deprecated and will be removed in the future. Please use `/sse_rtt_translate/v2` instead.")  
 async def sse_rtt_translate(  
     file: UploadFile = File(...),  
-    transcription_request: TranscriptionData = Form()  
+    transcription_request: TranscriptionData = Depends()  
 ):  
     """  
     Transcribe and translate an audio file.  
@@ -713,8 +716,10 @@ async def sse_rtt_translate():
   
     This endpoint checks the waiting list and processes the translation if the model is not busy.  
     """  
+    sse_stop_event.clear()  
+
     async def event_stream():  
-        while not service_stop_event.is_set():  
+        while not sse_stop_event.is_set():  
             if waiting_list and not model.processing:  
                 response_data = waiting_list.pop(0)  
                 audio_buffer = f"audio/{response_data.times}.wav"  
@@ -769,12 +774,18 @@ async def sse_rtt_translate():
                     yield f"{base_response}\n\n"  
             await asyncio.sleep(0.1)  
   
-    return StreamingResponse(event_stream(), media_type="text/event-stream")  
+    return StreamingResponse(event_stream(), media_type="text/event-stream") 
+
+@app.post("/stop_sse")  
+async def stop_sse():  
+    """Endpoint to stop the SSE connection."""  
+    sse_stop_event.set() 
+    return BaseResponse(status="OK", message=" | SSE connection has been stopped | ", data=None)  
 
 @app.post("/vst_translate", description="**[DEPRECATED]** This endpoint is deprecated and will be removed in the future. Please use `/sse_rtt_translate/v2` instead.")  
 async def vst_translate(  
     file: UploadFile = File(...),  
-    transcription_request: VSTTranscriptionData = Form()  
+    transcription_request: VSTTranscriptionData = Depends()  
 ):  
     """  
     Transcribe and translate an audio file.  

@@ -27,14 +27,14 @@ class Gemma4BTranslate:
         else:  
             return text
         
-    def translate(self, sourse_text, sourse_lang, target_lang):
-        if {sourse_lang, target_lang}.issubset(LANGUAGE_LIST):  
+    def translate(self, source_text, source_lang, target_lang):
+        if {source_lang, target_lang}.issubset(LANGUAGE_LIST):  
             system_prompt = SYSTEM_PRMOPT[target_lang]
             try:
-                system_prompt = system_prompt.replace("source_language", SOURCE_LANGUAGE[LANGUAGE_LIST.index(sourse_lang)][LANGUAGE_LIST.index(target_lang)])  
-                system_prompt = system_prompt.replace("sample_1", SAMPLE_1[sourse_lang])  
-                system_prompt = system_prompt.replace("sample_2", SAMPLE_2[sourse_lang])  
-                system_prompt = system_prompt.replace("sample_3", SAMPLE_3[sourse_lang])  
+                system_prompt = system_prompt.replace("source_language", SOURCE_LANGUAGE[LANGUAGE_LIST.index(source_lang)][LANGUAGE_LIST.index(target_lang)])  
+                system_prompt = system_prompt.replace("sample_1", SAMPLE_1[source_lang])  
+                system_prompt = system_prompt.replace("sample_2", SAMPLE_2[source_lang])  
+                system_prompt = system_prompt.replace("sample_3", SAMPLE_3[source_lang])  
             except Exception as e:
                 logger.error(f"Error: {e}")
             logger.debug(f" | system prompt: {system_prompt} | ")
@@ -46,7 +46,7 @@ class Gemma4BTranslate:
                 },
                 { 
                     "role": "user", 
-                    "content": [{ "type": "text", "text": sourse_text}
+                    "content": [{ "type": "text", "text": source_text}
                         ] 
                     } 
                 ]
@@ -67,8 +67,8 @@ class Gemma4BTranslate:
             
             return decoded
         else:
-            logger.error(f" | Error: sourse_lang \"{sourse_lang}\" or target_lang \"{target_lang}\" not in LANGUAGE_LIST \"{LANGUAGE_LIST}\" | ")
-            return sourse_text
+            logger.error(f" | Error: source_lang \"{source_lang}\" or target_lang \"{target_lang}\" not in LANGUAGE_LIST \"{LANGUAGE_LIST}\" | ")
+            return source_text
         
 if __name__ == "__main__":  
     logging.basicConfig(level=logging.DEBUG)  

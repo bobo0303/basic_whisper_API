@@ -14,79 +14,84 @@ from api.ollama_translate import OllamaChat
 from api.gpt_translate import Gpt4oTranslate  
 
 from api.text_postprocess import extract_sensevoice_result_text
-from lib.constant import ModlePath, OPTIONS, SENSEVOCIE_PARMATER, IS_PUNC, PUNC_PARMATER, GEMMA_12B_QAT_CONFIG
+from lib.constant import ModlePath, OPTIONS, SV_OPTIONS, SENSEVOCIE_PARMATER, IS_PUNC, PUNC_PARMATER, OLLAMA_MODEL
   
   
 logger = logging.getLogger(__name__)  
   
+# 配置日誌記錄器設置（如果尚未配置）  
+if not logger.handlers:  
+    log_format = "%(asctime)s - %(message)s"  
+    log_file = "logs/app.log"  
+    logging.basicConfig(level=logging.INFO, format=log_format)  
+  
+    # 創建文件處理器  
+    file_handler = logging.handlers.RotatingFileHandler(  
+        log_file, maxBytes=10*1024*1024, backupCount=5  
+    )  
+    file_handler.setFormatter(logging.Formatter(log_format))  
+  
+    # 創建控制台處理器  
+    console_handler = logging.StreamHandler()  
+    console_handler.setFormatter(logging.Formatter(log_format))  
+  
+    logger.addHandler(file_handler)  
+    logger.addHandler(console_handler)  
+  
+logger.setLevel(logging.INFO)  
+logger.propagate = False  
+
 class Model:  
     def __init__(self):  
-        """  
-        Initialize the Model class with default attributes.  
-        """  
+        """Initialize the Model class with default attributes."""  
         self.models_path = ModlePath()  
-        # self.gemma_translator = Gemma4BTranslate()
-        self.ollama_translator = OllamaChat(GEMMA_12B_QAT_CONFIG)
+        # self.gemma_translator = Gemma4BTranslate()  
+        self.ollama_translator = OllamaChat(OLLAMA_MODEL['gemma'])  
         self.gpt4o_translator = Gpt4oTranslate()  
         self.google_translator = Translator()  
         self.device = "cuda" if torch.cuda.is_available() else "cpu"  
-        
         self.model = None  
         self.model_version = None  
-        self.punc_model = None
+        self.punc_model = None  
         self.translate_method = "google"  
-        
-        self.processing = None
-        self.result_queue = Queue()
-        
-    def load_model(self, models_name):  
-        """  
-        Load the specified model based on the model's name.  
+        self.processing = None  
+        self.result_queue = Queue()  
   
-        :param models_name: str  
-            The name of the model to be loaded.  
-        :rtype: None  
-        :logs: Loading status and time.  
-        """  
+    def load_model(self, models_name):  
+        """Load the specified model based on the model's name."""  
         start = time.time()  
         try:  
             # Release old model resources  
-            self._release_model() 
-            self.model_version = models_name
-
+            self._release_model()  
+            self.model_version = models_name  
+  
             # Choose model weight  
             if models_name == "large_v2":  
                 self.model = whisper.load_model(self.models_path.large_v2)  
-                self.model.to(self.device)
+                self.model.to(self.device)  
             elif models_name == "medium":  
                 self.model = whisper.load_model(self.models_path.medium)  
-                self.model.to(self.device)
+                self.model.to(self.device)  
             elif models_name == "sensevoice":  
-                self.model = AutoModel(**SENSEVOCIE_PARMATER)
-                if IS_PUNC:
-                    start = time.time()
-                    logger.info(" | Start to loading punch model. | ")
-                    self.punc_model = AutoModel(**PUNC_PARMATER)
-                    end = time.time()
-                    logger.info(f" | Model \'ct-punc\' loaded in {end - start:.2f} seconds. | ")
+                self.model = AutoModel(**SENSEVOCIE_PARMATER)  
+                if IS_PUNC:  
+                    start = time.time()  
+                    logger.info(" | Start to loading punch model. | ")  
+                    self.punc_model = AutoModel(**PUNC_PARMATER)  
+                    end = time.time()  
+                    logger.info(f" | Model 'ct-punc' loaded in {end - start:.2f} seconds. | ")  
             end = time.time()  
             logger.info(f" | Model '{models_name}' loaded in {end - start:.2f} seconds. | ")  
-        except Exception as e:
-            self.model_version = None
-            logger.error(f' | load_model() models_name: {models_name} error: {e} | ')
+        except Exception as e:  
+            self.model_version = None  
+            logger.error(f' | load_model() models_name: {models_name} error: {e} | ')  
   
     def _release_model(self):  
-        """  
-        Release the resources occupied by the current model.  
-  
-        :param None: The function does not take any parameters.  
-        :rtype: None  
-        :logs: Model release status.  
-        """  
+        """Release the resources occupied by the current model."""  
         if self.model is not None:  
             del self.model  
             gc.collect()  
-            self.model = None
+            self.model = None  
             torch.cuda.empty_cache()  
             logger.info(" | Previous model resources have been released. | ")  
   
@@ -98,8 +103,17 @@ class Model:
             The name of the translation method to be used.  
         :rtype: None  
         """  
+        if not self.translate_method == method_name and method_name in OLLAMA_MODEL:
+            try:
+                self.ollama_translator.close()
+                self.ollama_translator = OllamaChat(OLLAMA_MODEL[method_name])
+                logger.info(f" | old ollama has been released. Initial '{method_name}' has been successful | ")          
+            except Exception as e:
+                logger.error(f" | ollama translate method change error: {e} | ")
+                self.ollama_translator = OllamaChat(OLLAMA_MODEL['gemma'])
+                logger.info(f" | Initial the default ollama model 'gemma' | ")          
         self.translate_method = method_name  
-  
+
     def transcribe(self, audio_file_path, ori):  
         """  
         Perform transcription on the given audio file.  
@@ -112,13 +126,15 @@ class Model:
             A tuple containing the original transcription and inference time.  
         :logs: Inference status and time.  
         """  
-        OPTIONS["language"] = ori  # Set the language option for transcription  
-    
+        # Set the language option for transcription  
+        OPTIONS["language"] = ori  
+        SV_OPTIONS["language"] = ori
+        
         start = time.time()  # Start timing the transcription process  
     
         if self.model_version == "sensevoice":  
             # Perform transcription using the SenseVoice model  
-            result = self.model.generate(audio_file_path, **OPTIONS)  
+            result = self.model.generate(audio_file_path, **SV_OPTIONS)  
             ori_pred = result[0]['text']  
             
             if IS_PUNC:  
@@ -183,7 +199,7 @@ class Model:
                 # elif self.translate_method == "gemma":  
                 #     translated_pred = self.gemma_translator.translate(ori_pred, ori, tar)  
                 
-                elif self.translate_method == "ollama":  
+                elif self.translate_method in OLLAMA_MODEL:  
                     translated_pred = self.ollama_translator.chat(source_text=ori_pred, source_lang=ori, target_lang=tar)  
                 
                 else:  

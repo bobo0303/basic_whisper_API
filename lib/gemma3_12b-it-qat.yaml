@@ -1,4 +1,3 @@
 HOST: "http://172.17.0.1:52013/"
 # MODEL: "gemma3:12b"
-# MODEL: "qwen2.5:14b-instruct-q4_K_M"
 MODEL: "gemma3:12b-it-qat"
