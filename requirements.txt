@@ -13,23 +13,7 @@ numba
 more-itertools
 tiktoken
 
-# g_translate
-/tmp/googletrans-4.0.0rc1-py3-none-any.whl   # 自己包的一定要這個不然會版本衝突
-
 # funASR
 modelscope==1.18.0
 funasr==1.1.6
 huggingface_hub>=0.26.0
-
-# Gemma (request python >= 3.9.0)
-transformers==4.50.1
-accelerate
-
-# ollama
-ollama
-
-# GPT-4o
-openai
-
-# sse
-sseclient

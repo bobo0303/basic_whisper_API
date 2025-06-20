@@ -15,7 +15,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   
 COPY requirements.txt /tmp/requirements.txt  
 COPY whl/openai_whisper-20240930-py3-none-any.whl /tmp/openai_whisper-20240930-py3-none-any.whl  
-COPY whl/googletrans-4.0.0rc1-py3-none-any.whl /tmp/googletrans-4.0.0rc1-py3-none-any.whl  
 COPY deb/cudnn-local-repo-ubuntu2204-9.1.0_1.0-1_amd64.deb /tmp/cudnn-local-repo-ubuntu2204-9.1.0_1.0-1_amd64.deb  
   
 RUN pip3 install -r /tmp/requirements.txt  
@@ -36,7 +35,6 @@ ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:/usr/lib/llv
   
 RUN rm /tmp/cudnn-local-repo-ubuntu2204-9.1.0_1.0-1_amd64.deb  
 RUN rm /tmp/openai_whisper-20240930-py3-none-any.whl  
-RUN rm /tmp/googletrans-4.0.0rc1-py3-none-any.whl  
 RUN rm /tmp/requirements.txt  
 
-# 進去後記得先 huggingface-cli login 
+CMD ["python3", "main.py"]  

@@ -1,11 +1,11 @@
 # My files
-models/*
 deb/*
 lib/azure_config.yaml
 app.yml
 audio/202*
 whl/*
 test
+models
 
 # Byte-compiled / optimized / DLL files  
 __pycache__/  

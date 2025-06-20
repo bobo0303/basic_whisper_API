@@ -4,7 +4,7 @@ import ctypes
   
 logger = logging.getLogger(__name__)  
   
-def translate_and_print(model, audio_file_path, result_queue, ori, tar, stop_event):  
+def transcribe_and_print(model, audio_file_path, result_queue, ori, stop_event):  
     """  
     Transcribe and translate an audio file, then store the results in a queue.  
   
@@ -15,37 +15,13 @@ def translate_and_print(model, audio_file_path, result_queue, ori, tar, stop_eve
         The queue to store the results.  
     :param ori: str  
         The original language of the audio.  
-    :param tar: str  
-        The target language for translation.  
     :param stop_event: threading.Event  
         The event used to signal stopping.  
     """  
     ori_pred, inference_time = model.transcribe(audio_file_path, ori)  
-    translated_pred, g_translate_time, translate_method = model.translate(ori_pred, ori, tar)  
-    ori_pred = ori_pred if translated_pred != "" else ""  
-    result_queue.put((ori_pred, translated_pred, inference_time, g_translate_time, translate_method))  
+    result_queue.put((ori_pred, inference_time))  
     stop_event.set()  # Signal to stop the waiting thread  
   
-def ws_translate_and_print(model, audio_file_path, ori, tar, stop_event):  
-    """  
-    Transcribe and translate an audio file for WebSocket, then store the results in the model's result queue.  
-  
-    :param model: The model used for transcription and translation.  
-    :param audio_file_path: str  
-        The path to the audio file to be processed.  
-    :param ori: str  
-        The original language of the audio.  
-    :param tar: str  
-        The target language for translation.  
-    :param stop_event: threading.Event  
-        The event used to signal stopping.  
-    """  
-    model.processing = True  
-    ori_pred, inference_time = model.transcribe(audio_file_path, ori)  
-    translated_pred, g_translate_time, translate_method = model.translate(ori_pred, ori, tar)  
-    model.result_queue.put((ori_pred, translated_pred, inference_time, g_translate_time, translate_method))  
-    model.processing = False  
-    stop_event.set()  # Signal to stop the waiting thread  
   
 def get_thread_id(thread):  
     """  

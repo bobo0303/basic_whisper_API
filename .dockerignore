@@ -1,6 +1,5 @@
 audio/output_*
 audio/202*
-models
 csv
 test.py
 panding_audio.py
